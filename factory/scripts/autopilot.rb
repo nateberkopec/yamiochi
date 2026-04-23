@@ -30,15 +30,22 @@ module YamiochiFactory
 
       loop do
         sync_queue
-        issue = select_issue
-        break unless issue
 
         completed += 1
         begin
-          process_issue(issue)
-          clear_issue_failure(issue.fetch("number"))
+          if (pull_request = select_pull_request)
+            resume_pull_request(pull_request)
+            clear_issue_failure(pull_request.fetch("issue_number"))
+          else
+            issue = select_issue
+            break unless issue
+
+            process_issue(issue)
+            clear_issue_failure(issue.fetch("number"))
+          end
         rescue StandardError => e
-          record_issue_failure(issue.fetch("number"), e)
+          issue_number = pull_request&.fetch("issue_number", nil) || issue&.fetch("number", nil)
+          record_issue_failure(issue_number, e) if issue_number
           warn e.full_message
         end
         break if options.fetch(:once)
@@ -75,10 +82,43 @@ module YamiochiFactory
       capture!(%w[ruby factory/scripts/sync_spec_queue.rb], chdir: repo_root, allow_failure: true)
     end
 
+    def select_pull_request
+      pull_requests = JSON.parse(
+        capture!(
+          [
+            "gh", "pr", "list",
+            "-R", github.repository,
+            "--state", "open",
+            "--json", "number,title,url,headRefName,baseRefName,state,createdAt"
+          ],
+          chdir: repo_root
+        ).first
+      )
+
+      pull_requests
+        .map do |pull_request|
+          issue_number = issue_number_from_branch(pull_request.fetch("headRefName", ""))
+          next unless issue_number
+          next if suppressed_issue?(issue_number)
+
+          pull_request.merge("issue_number" => issue_number)
+        end
+        .compact
+        .min_by { |pull_request| [pull_request.fetch("createdAt"), pull_request.fetch("number")] }
+    end
+
     def select_issue
       issues = github.issues
       available_issues = issues.reject { |issue| suppressed_issue?(issue.fetch("number")) }
       Selection.select_issue(available_issues)
+    end
+
+    def resume_pull_request(pull_request)
+      stabilize_pull_request(
+        run_id: nil,
+        pull_request: pull_request,
+        issue_number: pull_request.fetch("issue_number")
+      )
     end
 
     def stabilize_pull_request(run_id:, pull_request:, issue_number:)
@@ -205,8 +245,16 @@ module YamiochiFactory
     end
 
     def merge_pull_request(run_id, pull_request)
-      capture!("fabro pr merge #{run_id} --method squash --json", chdir: repo_root, env: fabro_env, shell: true)
+      if run_id
+        capture!("fabro pr merge #{run_id} --method squash --json", chdir: repo_root, env: fabro_env, shell: true)
+      else
+        merge_pull_request_with_gh(pull_request)
+      end
     rescue StandardError
+      merge_pull_request_with_gh(pull_request)
+    end
+
+    def merge_pull_request_with_gh(pull_request)
       capture!(
         ["gh", "pr", "merge", pull_request.fetch("number").to_s, "--squash", "--delete-branch", "-R", github.repository],
         chdir: repo_root
@@ -230,19 +278,46 @@ module YamiochiFactory
         checks = JSON.parse(
           capture!(
             [
-              "gh", "pr", "checks", pull_request_number.to_s,
-              "--json", "bucket,completedAt,description,event,link,name,startedAt,state,workflow",
-              "-R", github.repository
+              "gh", "pr", "view", pull_request_number.to_s,
+              "-R", github.repository,
+              "--json", "statusCheckRollup"
             ],
             chdir: repo_root
           ).first
-        )
+        ).fetch("statusCheckRollup", [])
 
-        buckets = checks.map { |check| check.fetch("bucket") }
-        return { status: :success, checks: } if buckets.all? { |bucket| %w[pass skipping].include?(bucket) }
-        return { status: :fail, checks: } if buckets.include?("fail")
+        buckets = checks.map { |check| check_bucket(check) }
+        return { status: :success, checks: } if !checks.empty? && buckets.all? { |bucket| %i[pass skipping].include?(bucket) }
+        return { status: :fail, checks: } if buckets.include?(:fail)
 
         sleep options.fetch(:poll_interval)
+      end
+    end
+
+    def check_bucket(check)
+      case check["__typename"]
+      when "CheckRun"
+        return :pending unless check["status"] == "COMPLETED"
+
+        case check["conclusion"]
+        when "SUCCESS", "NEUTRAL"
+          :pass
+        when "SKIPPED"
+          :skipping
+        else
+          :fail
+        end
+      when "StatusContext"
+        case check["state"]
+        when "SUCCESS"
+          :pass
+        when "PENDING", "EXPECTED"
+          :pending
+        else
+          :fail
+        end
+      else
+        :pending
       end
     end
 
@@ -294,6 +369,8 @@ module YamiochiFactory
     end
 
     def record_issue_failure(issue_number, error)
+      return unless issue_number
+
       state = load_attempt_state
       issue_key = issue_number.to_s
       record = state.fetch(issue_key, {})
@@ -331,6 +408,10 @@ module YamiochiFactory
     def save_attempt_state(state)
       File.write(attempts_file, JSON.pretty_generate(state))
       @attempt_state = state
+    end
+
+    def issue_number_from_branch(branch_name)
+      branch_name[/\Aissue-(\d+)-/, 1]&.to_i
     end
 
     def commit_if_needed(worktree_dir, message)
