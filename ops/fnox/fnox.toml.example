@@ -1,0 +1,26 @@
+[providers.op]
+type = "1password"
+vault = "Employee"
+
+[secrets]
+REPO_URL = { default = "https://github.com/nateberkopec/yamiochi.git" }
+REPO_REF = { default = "main" }
+MODEL_PROVIDER = { default = "openai" }
+MODEL_NAME = { default = "gpt-5.4" }
+FABRO_DOMAIN = { default = "fabro-hooks.example.com" }
+GITHUB_RUNNER_REPO_URL = { default = "https://github.com/nateberkopec/yamiochi" }
+GITHUB_APP_ID = { default = "123456" }
+GITHUB_APP_CLIENT_ID = { default = "Iv1.REPLACE_ME" }
+GITHUB_APP_SLUG = { default = "yamiochi-factory" }
+GITHUB_APP_CLIENT_SECRET = { provider = "op", value = "yamiochi-factory/GitHub App Client Secret" }
+GITHUB_APP_WEBHOOK_SECRET = { provider = "op", value = "yamiochi-factory/GitHub App Webhook Secret" }
+GITHUB_APP_PRIVATE_KEY = { provider = "op", value = "yamiochi-factory/GitHub App Private Key" }
+GITHUB_TOKEN = { provider = "op", value = "yamiochi-factory/GitHub Token" }
+GITHUB_RUNNER_ACCESS_TOKEN = { provider = "op", value = "yamiochi-factory/GitHub Runner Access Token" }
+MODEL_API_KEY = { provider = "op", value = "yamiochi-factory/OpenAI API Key" }
+MINIO_ROOT_USER = { provider = "op", value = "yamiochi-factory/MinIO Root User" }
+MINIO_ROOT_PASSWORD = { provider = "op", value = "yamiochi-factory/MinIO Root Password" }
+BENCHMARK_HOST = { provider = "op", value = "yamiochi-factory/Benchmark Host" }
+BENCHMARK_SSH_USER = { provider = "op", value = "yamiochi-factory/Benchmark SSH User" }
+BENCHMARK_SSH_KEY = { provider = "op", value = "yamiochi-factory/Benchmark SSH Key" }
+BENCHMARK_SSH_KEY_PATH = { default = "/opt/yamiochi-factory/secrets/benchmark_ssh_key" }

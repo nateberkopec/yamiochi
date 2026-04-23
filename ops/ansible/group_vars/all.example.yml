@@ -1,0 +1,75 @@
+factory_root: /opt/yamiochi-factory
+factory_state_root: /var/lib/yamiochi-factory
+factory_compose_project_name: yamiochi-factory
+factory_runtime_env_local_path: "{{ playbook_dir }}/../.secrets/factory.env"
+
+factory_repo_url: https://github.com/nateberkopec/yamiochi.git
+factory_repo_ref: main
+factory_runner_image: ghcr.io/example/yamiochi-factory-runner:latest
+factory_github_runner_image: ghcr.io/myoung34/docker-github-actions-runner:latest
+
+factory_agent_runner_replicas: 3
+
+factory_resources:
+  fabro:
+    cpus: 1
+    mem_limit: 2g
+  postgres:
+    cpus: 1
+    mem_limit: 4g
+  minio:
+    cpus: 1
+    mem_limit: 2g
+  judge:
+    cpus: 2
+    mem_limit: 4g
+  scenario_gates:
+    cpus: 1
+    mem_limit: 4g
+  benchmark_dispatcher:
+    cpus: 0.5
+    mem_limit: 1g
+  agent_runner:
+    cpus: 1
+    mem_limit: 4g
+  github_runner_fast:
+    cpus: 1
+    mem_limit: 3g
+  github_runner_heavy:
+    cpus: 6
+    mem_limit: 16g
+
+factory_postgres:
+  db: factory
+  user: factory
+  password: factory
+
+factory_model:
+  provider: openai
+  name: gpt-5.4
+
+factory_fabro:
+  listen_port: 32276
+
+factory_public_ingress:
+  enabled: true
+  domain: fabro-hooks.example.com
+  webhook_path: /api/v1/webhooks/github
+
+factory_github_app:
+  enabled: true
+  app_id: "123456"
+  client_id: Iv1.REPLACE_ME
+  slug: yamiochi-factory
+
+factory_tailscale:
+  hostname: yamiochi-factory
+  auth_key: tskey-REPLACE_ME
+  enable_ssh: true
+
+# Optional until the separate benchmark host exists.
+factory_benchmark:
+  enabled: false
+  host: ""
+  ssh_user: ec2-user
+  ssh_key_path: /opt/yamiochi-factory/secrets/benchmark_ssh_key

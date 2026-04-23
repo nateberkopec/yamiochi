@@ -1,0 +1,64 @@
+---
+- name: Download Tailscale signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Download Tailscale apt source list
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.tailscale-keyring.list"
+    dest: /etc/apt/sources.list.d/tailscale.list
+    mode: "0644"
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+- name: Enable tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Check whether host is already on tailnet
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ip
+  changed_when: false
+  failed_when: false
+
+- name: Join tailnet
+  ansible.builtin.command: >-
+    tailscale up
+    --auth-key={{ factory_tailscale.auth_key }}
+    --hostname={{ factory_tailscale.hostname }}
+    {% if factory_tailscale.enable_ssh %}--ssh{% endif %}
+  when: tailscale_ip.rc != 0
+
+- name: Set UFW default deny incoming
+  ansible.builtin.command: ufw default deny incoming
+  changed_when: false
+
+- name: Set UFW default allow outgoing
+  ansible.builtin.command: ufw default allow outgoing
+  changed_when: false
+
+- name: Allow all inbound traffic on tailscale0
+  ansible.builtin.command: ufw allow in on tailscale0
+  changed_when: false
+
+- name: Allow public HTTP for ACME
+  ansible.builtin.command: ufw allow 80/tcp
+  when: factory_public_ingress.enabled
+  changed_when: false
+
+- name: Allow public HTTPS for webhook ingress
+  ansible.builtin.command: ufw allow 443/tcp
+  when: factory_public_ingress.enabled
+  changed_when: false
+
+- name: Enable UFW
+  ansible.builtin.command: ufw --force enable
+  changed_when: false

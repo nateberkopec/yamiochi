@@ -1,0 +1,18 @@
+[Unit]
+Description=Yamiochi factory
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ factory_root }}
+ExecStart=/usr/local/bin/yamiochi-factory-compose up
+ExecReload=/usr/local/bin/yamiochi-factory-compose restart
+ExecStop=/usr/local/bin/yamiochi-factory-compose down
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

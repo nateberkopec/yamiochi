@@ -1,0 +1,7 @@
+---
+- name: Deploy factory stack
+  hosts: factory
+  become: true
+  roles:
+    - factory_deploy
+    - caddy_webhook_ingress

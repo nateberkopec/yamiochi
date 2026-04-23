@@ -1,0 +1,37 @@
+---
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - curl
+      - jq
+      - python3
+      - ufw
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Create factory root directory
+  ansible.builtin.file:
+    path: "{{ factory_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create factory state root directory
+  ansible.builtin.file:
+    path: "{{ factory_state_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create factory secrets directory
+  ansible.builtin.file:
+    path: "{{ factory_root }}/secrets"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"

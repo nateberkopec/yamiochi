@@ -1,0 +1,8 @@
+---
+- name: Bootstrap factory host
+  hosts: factory
+  become: true
+  roles:
+    - common
+    - docker_host
+    - tailscale_host

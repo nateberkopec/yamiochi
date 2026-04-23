@@ -1,0 +1,9 @@
+all:
+  children:
+    factory:
+      hosts:
+        yamiochi-factory:
+          # Use the public bootstrap IP first, then swap this to the Tailscale IP or MagicDNS name.
+          ansible_host: 203.0.113.10
+          ansible_user: root
+          ansible_port: 22

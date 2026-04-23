@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="{{ factory_root }}"
+PROJECT="{{ factory_compose_project_name }}"
+RUNTIME_ENV="$ROOT/.env.runtime"
+cd "$ROOT"
+
+prepare_runtime_files() {
+  if grep -q '^BENCHMARK_SSH_KEY=' "$RUNTIME_ENV"; then
+    python3 - <<'PY'
+from pathlib import Path
+
+env_path = Path("{{ factory_root }}/.env.runtime")
+key_path = Path("{{ factory_benchmark.ssh_key_path }}")
+values = {}
+for line in env_path.read_text().splitlines():
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    values[key] = value
+key = values.get("BENCHMARK_SSH_KEY", "")
+if key:
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_text(key + ("\n" if not key.endswith("\n") else ""))
+    key_path.chmod(0o600)
+PY
+  fi
+}
+
+case "${1:-up}" in
+  up)
+    prepare_runtime_files
+    exec docker compose --project-name "$PROJECT" --env-file "$RUNTIME_ENV" up -d --remove-orphans --scale agent-runner={{ factory_agent_runner_replicas }}
+    ;;
+  down)
+    exec docker compose --project-name "$PROJECT" --env-file "$RUNTIME_ENV" down
+    ;;
+  restart)
+    prepare_runtime_files
+    docker compose --project-name "$PROJECT" --env-file "$RUNTIME_ENV" up -d --remove-orphans --scale agent-runner={{ factory_agent_runner_replicas }}
+    ;;
+  pull)
+    exec docker compose --project-name "$PROJECT" --env-file "$RUNTIME_ENV" pull
+    ;;
+  *)
+    echo "usage: $0 {up|down|restart|pull}" >&2
+    exit 1
+    ;;
+esac

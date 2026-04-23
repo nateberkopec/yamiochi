@@ -1,0 +1,12 @@
+{{ factory_public_ingress.domain }} {
+  @github_webhook {
+    path {{ factory_public_ingress.webhook_path }}
+    method POST
+  }
+
+  handle @github_webhook {
+    reverse_proxy 127.0.0.1:{{ factory_fabro.listen_port }}
+  }
+
+  respond 404
+}

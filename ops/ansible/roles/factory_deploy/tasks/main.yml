@@ -1,0 +1,61 @@
+---
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - factory_repo_url | length > 0
+      - factory_runner_image | length > 0
+      - factory_runtime_env_local_path | length > 0
+    fail_msg: Fill in ops/ansible/group_vars/all.yml before deploying.
+
+- name: Check local runtime env file exists
+  ansible.builtin.stat:
+    path: "{{ factory_runtime_env_local_path }}"
+  register: factory_runtime_env_local
+  delegate_to: localhost
+  become: false
+
+- name: Assert local runtime env file exists
+  ansible.builtin.assert:
+    that:
+      - factory_runtime_env_local.stat.exists
+    fail_msg: >-
+      Materialize secrets locally first, e.g. `cd ops/fnox && fnox export > ../ansible/.secrets/factory.env`.
+
+- name: Render docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ factory_root }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render compose wrapper
+  ansible.builtin.template:
+    src: compose-wrapper.sh.j2
+    dest: /usr/local/bin/yamiochi-factory-compose
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy runtime env file to host
+  ansible.builtin.copy:
+    src: "{{ factory_runtime_env_local_path }}"
+    dest: "{{ factory_root }}/.env.runtime"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Render systemd unit
+  ansible.builtin.template:
+    src: yamiochi-factory.service.j2
+    dest: /etc/systemd/system/yamiochi-factory.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable and start factory service
+  ansible.builtin.systemd:
+    name: yamiochi-factory.service
+    enabled: true
+    state: restarted
+    daemon_reload: true

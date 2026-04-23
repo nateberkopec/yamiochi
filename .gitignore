@@ -1,0 +1,10 @@
+# Local deployment state
+ops/ansible/inventory/hosts.yml
+ops/ansible/group_vars/all.yml
+ops/ansible/.ansible/
+ops/ansible/.secrets/
+ops/fnox/fnox.toml
+
+# Temporary/runtime artifacts
+tmp/
+*.retry

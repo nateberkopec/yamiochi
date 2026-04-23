@@ -1,0 +1,22 @@
+---
+- name: Install Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+    update_cache: true
+
+- name: Render Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+  when: factory_public_ingress.enabled
+
+- name: Enable and restart Caddy
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: true
+    state: restarted
+  when: factory_public_ingress.enabled
