@@ -39,8 +39,7 @@ class YamiochiServerTest < Minitest::Test
       request_text: basic_request("/")
     )
 
-    assert thread.join(5), "Expected server thread to exit after handling one client"
-    assert_same server, thread.value
+    assert_server_thread_exits(thread, server)
     assert_equal bound_port, server.bound_port
     assert_operator server.bound_port, :>, 0
 
@@ -64,10 +63,94 @@ class YamiochiServerTest < Minitest::Test
       request_text: basic_request("/greetings/from/yamiochi?name=test")
     )
 
-    assert thread.join(5), "Expected server thread to exit after handling one client"
-    assert_same server, thread.value
+    assert_server_thread_exits(thread, server)
     assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
     assert_equal "/greetings/from/yamiochi?name=test", response_body(response_text)
+  end
+
+  def test_run_returns_bad_request_for_http_1_0_requests
+    response_text = assert_bad_request("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n")
+
+    assert_equal "", response_body(response_text)
+  end
+
+  def test_run_returns_bad_request_when_host_header_is_missing
+    assert_bad_request("GET / HTTP/1.1\r\n\r\n")
+  end
+
+  def test_run_returns_bad_request_for_duplicate_host_headers
+    assert_bad_request("GET / HTTP/1.1\r\nHost: localhost\r\nHost: example.test\r\n\r\n")
+  end
+
+  def test_run_returns_bad_request_for_malformed_header_syntax
+    assert_bad_request("GET / HTTP/1.1\r\nHost: localhost\r\nBad Header: value\r\n\r\n")
+  end
+
+  def test_run_returns_bad_request_for_invalid_or_conflicting_content_length
+    [
+      "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: nope\r\n\r\n",
+      "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3\r\nContent-Length: 4\r\n\r\n",
+      "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 3, 4\r\n\r\n"
+    ].each do |request_text|
+      assert_bad_request(request_text)
+    end
+  end
+
+  def test_run_returns_bad_request_when_transfer_encoding_is_present
+    assert_bad_request("POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n")
+  end
+
+  def test_run_reads_post_body_into_rack_input
+    rackup_source = <<~'RUBY'
+      run lambda { |env|
+        body = env.fetch("rack.input").read
+        [200, {}, ["#{env.fetch("CONTENT_LENGTH")}|#{env.fetch("CONTENT_TYPE")}|#{body}"]]
+      }
+    RUBY
+
+    response_text, server, thread, _bound_port = run_server_request(
+      rackup_source:,
+      request_text: request_with_body("POST", "/submit", "hello world", "Content-Type" => "text/plain")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "11|text/plain|hello world", response_body(response_text)
+  end
+
+  def test_run_rewinds_rack_input_before_app_invocation
+    rackup_source = <<~'RUBY'
+      run lambda { |env|
+        input = env.fetch("rack.input")
+        [200, {}, ["#{input.pos}:#{input.read}"]]
+      }
+    RUBY
+
+    response_text, server, thread, _bound_port = run_server_request(
+      rackup_source:,
+      request_text: request_with_body("POST", "/submit", "abc")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "0:abc", response_body(response_text)
+  end
+
+  def test_run_preserves_unrecognized_request_methods
+    rackup_source = <<~'RUBY'
+      run ->(env) { [200, {}, [env.fetch("REQUEST_METHOD")]] }
+    RUBY
+
+    response_text, server, thread, _bound_port = run_server_request(
+      rackup_source:,
+      request_text: "BREW /coffee HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "BREW", response_body(response_text)
+  end
+
+  def test_run_returns_bad_request_for_truncated_request_bodies
+    assert_bad_request(request_with_body("POST", "/submit", "hello", "Content-Length" => "11"))
   end
 
   private
@@ -78,6 +161,14 @@ class YamiochiServerTest < Minitest::Test
 
   def basic_request(target)
     "GET #{target} HTTP/1.1\r\nHost: localhost\r\n\r\n"
+  end
+
+  def request_with_body(method, target, body, headers = {})
+    body = body.b
+    request_headers = { "Host" => "localhost", "Content-Length" => body.bytesize.to_s }.merge(headers)
+    header_lines = request_headers.map { |name, value| "#{name}: #{value}" }
+
+    "#{method} #{target} HTTP/1.1\r\n#{header_lines.join("\r\n")}\r\n\r\n#{body}"
   end
 
   def run_server_request(rackup_source:, request_text:)
@@ -103,6 +194,20 @@ class YamiochiServerTest < Minitest::Test
 
       [response_text, server, thread, bound_port]
     end
+  end
+
+  def assert_bad_request(request_text, rackup_source: rackup_contents("ok"))
+    response_text, server, thread, _bound_port = run_server_request(rackup_source:, request_text:)
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 400 Bad Request", response_status_line(response_text)
+
+    response_text
+  end
+
+  def assert_server_thread_exits(thread, server)
+    assert thread.join(5), "Expected server thread to exit after handling one client"
+    assert_same server, thread.value
   end
 
   def request_response(host, port, request_text)

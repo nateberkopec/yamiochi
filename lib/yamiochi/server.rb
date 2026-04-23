@@ -9,6 +9,10 @@ module Yamiochi
     DEFAULT_HOST = "0.0.0.0"
     DEFAULT_PORT = 9292
     MAX_HEADER_BYTES = 16 * 1024
+    HEADER_TERMINATOR = "\r\n\r\n".b.freeze
+    HEADER_NAME_PATTERN = /\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/
+    CONTENT_LENGTH_PATTERN = /\A\d+\z/
+    HOST_HEADER_PATTERN = /\A(?:\[(?<ip_literal>[0-9A-Fa-f:.]+)\]|(?<host>[A-Za-z0-9\-._~%!$&'()*+;=]+))(?::(?<port>\d+))?\z/
 
     STATUS_REASONS = {
       200 => "OK",
@@ -100,7 +104,7 @@ module Yamiochi
         request_bytes = read_request_bytes(client)
         return unless request_bytes
 
-        request_env = build_request_env(listener, request_bytes)
+        request_env = build_request_env(listener, client, request_bytes)
         write_rack_response(client, *call_app(request_env))
       rescue BadRequestError
         write_simple_response(client, 400)
@@ -119,7 +123,13 @@ module Yamiochi
       loop do
         request_bytes << client.readpartial(1024)
 
-        return request_bytes if request_bytes.include?("\r\n\r\n")
+        if (header_end = request_bytes.index(HEADER_TERMINATOR))
+          if header_end + HEADER_TERMINATOR.bytesize > MAX_HEADER_BYTES
+            raise BadRequestError, "request headers exceed #{MAX_HEADER_BYTES} bytes"
+          end
+
+          return request_bytes
+        end
 
         if request_bytes.bytesize > MAX_HEADER_BYTES
           raise BadRequestError, "request headers exceed #{MAX_HEADER_BYTES} bytes"
@@ -131,33 +141,57 @@ module Yamiochi
       request_bytes
     end
 
-    def build_request_env(listener, request_bytes)
-      unless request_bytes.include?("\r\n\r\n")
-        raise BadRequestError, "incomplete request headers"
-      end
-
-      header_block, = request_bytes.split("\r\n\r\n", 2)
-      request_line, *header_lines = header_block.split("\r\n")
-      method, request_target, server_protocol = parse_request_line(request_line)
-      headers = parse_headers(header_lines)
-      path_info, query_string = split_request_target(request_target)
+    def build_request_env(listener, client, request_bytes)
+      request = parse_request(request_bytes)
+      path_info, query_string = split_request_target(request.fetch(:request_target))
+      request_body = read_request_body(client, request.fetch(:buffered_body), request[:content_length])
+      rack_input = StringIO.new(request_body)
+      rack_input.rewind
 
       {
-        "REQUEST_METHOD" => method,
+        "REQUEST_METHOD" => request.fetch(:method),
         "SCRIPT_NAME" => "",
         "PATH_INFO" => path_info,
         "QUERY_STRING" => query_string,
-        "SERVER_NAME" => server_name(listener, headers["Host"]),
+        "SERVER_NAME" => server_name(listener, request.fetch(:headers)["host"]),
         "SERVER_PORT" => listener.local_address.ip_port.to_s,
-        "SERVER_PROTOCOL" => server_protocol,
+        "SERVER_PROTOCOL" => request.fetch(:server_protocol),
         "rack.version" => [3, 0],
         "rack.url_scheme" => "http",
-        "rack.input" => StringIO.new(String.new.b),
+        "rack.input" => rack_input,
         "rack.errors" => err,
         "rack.multithread" => false,
         "rack.multiprocess" => true,
         "rack.run_once" => false
-      }.merge(rack_headers(headers))
+      }.merge(rack_headers(request.fetch(:headers)))
+    end
+
+    def parse_request(request_bytes)
+      header_block, buffered_body = split_request_bytes(request_bytes)
+      request_line, *header_lines = header_block.split("\r\n")
+      method, request_target, server_protocol = parse_request_line(request_line)
+      raw_headers = parse_headers(header_lines)
+      validate_request_framing!(raw_headers)
+      host_header = normalize_host_header(raw_headers["host"])
+      content_length = normalize_content_length(raw_headers["content-length"])
+
+      {
+        method:,
+        request_target:,
+        server_protocol:,
+        headers: normalize_headers(raw_headers, host_header:, content_length:),
+        buffered_body:,
+        content_length:
+      }
+    end
+
+    def split_request_bytes(request_bytes)
+      header_end = request_bytes.index(HEADER_TERMINATOR)
+      raise BadRequestError, "incomplete request headers" unless header_end
+
+      header_block = request_bytes.byteslice(0, header_end)
+      buffered_body = request_bytes.byteslice(header_end + HEADER_TERMINATOR.bytesize, request_bytes.bytesize) || String.new.b
+      [header_block, buffered_body]
     end
 
     def parse_request_line(request_line)
@@ -178,9 +212,73 @@ module Yamiochi
       header_lines.each_with_object({}) do |line, headers|
         name, value = line.split(":", 2)
         raise BadRequestError, "malformed header: #{line.inspect}" unless name && value
+        raise BadRequestError, "invalid header name: #{name.inspect}" unless HEADER_NAME_PATTERN.match?(name)
 
-        headers[name] = value.lstrip
+        normalized_name = name.downcase
+        headers[normalized_name] ||= []
+        headers[normalized_name] << value.sub(/\A[ \t]*/, "")
       end
+    end
+
+    def validate_request_framing!(headers)
+      return unless headers.key?("transfer-encoding")
+
+      raise BadRequestError, "unsupported transfer encoding"
+    end
+
+    def normalize_host_header(values)
+      host_values = Array(values)
+      raise BadRequestError, "missing Host header" if host_values.empty?
+      raise BadRequestError, "multiple Host headers" unless host_values.one?
+      raise BadRequestError, "invalid Host header" unless valid_host_header?(host_values.first)
+
+      host_values.first
+    end
+
+    def normalize_content_length(values)
+      content_length_values = Array(values)
+      return nil if content_length_values.empty?
+
+      parsed_lengths = content_length_values.flat_map { |value| value.split(",").map(&:strip) }.map do |value|
+        raise BadRequestError, "invalid Content-Length" unless CONTENT_LENGTH_PATTERN.match?(value)
+
+        Integer(value, 10)
+      end
+
+      raise BadRequestError, "conflicting Content-Length" unless parsed_lengths.uniq.one?
+
+      parsed_lengths.first
+    end
+
+    def normalize_headers(headers, host_header:, content_length:)
+      headers.each_with_object({}) do |(name, values), normalized_headers|
+        normalized_headers[name] = case name
+        when "host"
+          host_header
+        when "content-length"
+          content_length.to_s
+        else
+          values.join(", ")
+        end
+      end
+    end
+
+    def valid_host_header?(host_header)
+      !host_header.include?(",") && HOST_HEADER_PATTERN.match?(host_header)
+    end
+
+    def read_request_body(client, buffered_body, content_length)
+      return String.new.b unless content_length
+
+      body = buffered_body.byteslice(0, content_length).to_s.b
+
+      while body.bytesize < content_length
+        body << client.readpartial([1024, content_length - body.bytesize].min)
+      end
+
+      body
+    rescue EOFError
+      raise BadRequestError, "truncated request body"
     end
 
     def split_request_target(request_target)
@@ -197,11 +295,10 @@ module Yamiochi
     end
 
     def host_header_name(host_header)
-      if host_header.start_with?("[")
-        host_header[/\A\[(?<host>[^\]]+)\](?::\d+)?\z/, :host] || host_header
-      else
-        host_header.split(":", 2).first
-      end
+      host_header_match = HOST_HEADER_PATTERN.match(host_header)
+      return host_header unless host_header_match
+
+      host_header_match[:ip_literal] || host_header_match[:host]
     end
 
     def rack_headers(headers)
