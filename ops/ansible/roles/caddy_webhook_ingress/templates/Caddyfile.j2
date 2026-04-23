@@ -10,3 +10,10 @@
 
   respond 404
 }
+
+{{ factory_private_ui_domain }} {
+  tls /etc/caddy/private-ui/fabro-ui.crt /etc/caddy/private-ui/fabro-ui.key
+  encode zstd gzip
+
+  reverse_proxy 127.0.0.1:{{ factory_fabro.listen_port }}
+}

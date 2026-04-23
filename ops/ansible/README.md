@@ -57,14 +57,20 @@ The intended posture is:
 - deny non-tailnet inbound traffic with the host firewall
 - access SSH and factory services over Tailscale only
 - expose only a narrow public HTTPS ingress for GitHub App webhooks
+- expose the Fabro operator UI privately on a MagicDNS hostname with Caddy-managed internal TLS, HTTP/2, and compression
 
-The public ingress shape is:
+The ingress shape is:
 
 - Caddy listens on `80/443`
-- only `POST /api/v1/webhooks/github` is proxied to Fabro on `127.0.0.1:32276` by default
-- everything else returns `404`
+- the private MagicDNS host (for example `https://yamiochi-factory-1.tail6cc978.ts.net`) terminates with a host-local certificate signed by a host-local private CA, enables HTTP/2 plus `zstd`/`gzip`, and reverse proxies to Fabro on `127.0.0.1:32276`
+- `https://fabro-hooks.speedshop.co` only proxies `POST /api/v1/webhooks/github`
+- everything else on the public webhook host returns `404`
 
-That gives GitHub App mode the one public hook it needs without making the rest of the box public.
+That gives operators a fast private UI over Tailscale without widening public exposure beyond the GitHub webhook route.
+
+### Trusting the private UI certificate
+
+Deploy creates a private root CA at `/etc/caddy/private-ui/rootCA.crt` and signs the Fabro UI certificate with it. Each operator machine that should load the private HTTPS UI without warnings must trust that root certificate locally.
 
 ## One-box EX63 service split
 

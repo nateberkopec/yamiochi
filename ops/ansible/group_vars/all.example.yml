@@ -29,7 +29,8 @@ factory_fabro:
   listen_port: 32276
   max_concurrent_runs: 3
 
-factory_web_origin: 100.127.134.78:32276
+factory_private_ui_domain: yamiochi-factory-1.tail6cc978.ts.net
+factory_web_origin: https://yamiochi-factory-1.tail6cc978.ts.net
 
 factory_public_ingress:
   enabled: true

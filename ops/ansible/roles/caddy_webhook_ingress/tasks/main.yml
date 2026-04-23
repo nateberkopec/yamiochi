@@ -5,6 +5,95 @@
     state: present
     update_cache: true
 
+- name: Create private UI TLS directory
+  ansible.builtin.file:
+    path: /etc/caddy/private-ui
+    state: directory
+    owner: root
+    group: caddy
+    mode: "0750"
+  when: factory_public_ingress.enabled
+
+- name: Generate private UI root CA key
+  ansible.builtin.command:
+    cmd: openssl genrsa -out /etc/caddy/private-ui/rootCA.key 4096
+    creates: /etc/caddy/private-ui/rootCA.key
+  when: factory_public_ingress.enabled
+
+- name: Generate private UI root CA certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -new -nodes
+      -key /etc/caddy/private-ui/rootCA.key
+      -sha256 -days 3650
+      -out /etc/caddy/private-ui/rootCA.crt
+      -subj /CN=Yamiochi Fabro Private UI Root CA
+    creates: /etc/caddy/private-ui/rootCA.crt
+  when: factory_public_ingress.enabled
+
+- name: Render private UI certificate extension file
+  ansible.builtin.copy:
+    dest: /etc/caddy/private-ui/fabro-ui.ext
+    owner: root
+    group: caddy
+    mode: "0640"
+    content: |
+      authorityKeyIdentifier=keyid,issuer
+      basicConstraints=CA:FALSE
+      keyUsage = digitalSignature, keyEncipherment
+      extendedKeyUsage = serverAuth
+      subjectAltName = @alt_names
+      [alt_names]
+      DNS.1 = {{ factory_private_ui_domain }}
+  when: factory_public_ingress.enabled
+
+- name: Generate private UI leaf key
+  ansible.builtin.command:
+    cmd: openssl genrsa -out /etc/caddy/private-ui/fabro-ui.key 2048
+  changed_when: true
+  when: factory_public_ingress.enabled
+
+- name: Generate private UI CSR
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -new
+      -key /etc/caddy/private-ui/fabro-ui.key
+      -out /etc/caddy/private-ui/fabro-ui.csr
+      -subj /CN={{ factory_private_ui_domain }}
+  changed_when: true
+  when: factory_public_ingress.enabled
+
+- name: Sign private UI certificate
+  ansible.builtin.command:
+    cmd: >-
+      openssl x509 -req
+      -in /etc/caddy/private-ui/fabro-ui.csr
+      -CA /etc/caddy/private-ui/rootCA.crt
+      -CAkey /etc/caddy/private-ui/rootCA.key
+      -CAcreateserial
+      -out /etc/caddy/private-ui/fabro-ui.crt
+      -days 825
+      -sha256
+      -extfile /etc/caddy/private-ui/fabro-ui.ext
+  changed_when: true
+  when: factory_public_ingress.enabled
+
+- name: Set private UI certificate permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: root
+    group: caddy
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /etc/caddy/private-ui/rootCA.key, mode: '0640' }
+    - { path: /etc/caddy/private-ui/rootCA.crt, mode: '0640' }
+    - { path: /etc/caddy/private-ui/fabro-ui.key, mode: '0640' }
+    - { path: /etc/caddy/private-ui/fabro-ui.crt, mode: '0640' }
+    - { path: /etc/caddy/private-ui/fabro-ui.csr, mode: '0640' }
+    - { path: /etc/caddy/private-ui/fabro-ui.ext, mode: '0640' }
+    - { path: /etc/caddy/private-ui/rootCA.srl, mode: '0640' }
+  when: factory_public_ingress.enabled
+
 - name: Render Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2

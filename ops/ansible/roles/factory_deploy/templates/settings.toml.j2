@@ -9,7 +9,7 @@ url = "https://{{ factory_public_ingress.domain }}"
 
 [server.web]
 enabled = true
-url = "http://{{ factory_web_origin }}"
+url = "{{ factory_web_origin }}"
 
 [server.auth]
 methods = ["dev-token"]
