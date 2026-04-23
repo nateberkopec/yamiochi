@@ -27,4 +27,6 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
  && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
 
+COPY --from={{ factory_fabro_image }} /usr/local/bin/fabro /usr/local/bin/fabro
+
 WORKDIR /workspace

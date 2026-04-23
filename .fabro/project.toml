@@ -8,6 +8,16 @@ name = "gpt-5.4"
 provider = "docker"
 preserve = false
 
+[run.scm]
+owner = "nateberkopec"
+repository = "yamiochi"
+
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = false
+merge_strategy = "squash"
+
 [run.checkpoint]
 exclude_globs = ["tmp/**", "ops/ansible/.secrets/**"]
 

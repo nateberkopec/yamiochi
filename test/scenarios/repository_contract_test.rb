@@ -8,6 +8,8 @@ class RepositoryContractScenarioTest < Minitest::Test
       .fabro/project.toml
       .fabro/workflows/smoke/workflow.fabro
       .fabro/workflows/implement-issue/workflow.fabro
+      .fabro/workflows/select-work/workflow.fabro
+      .fabro/workflows/repair-pr/workflow.fabro
       factory/deny_paths.txt
       factory/judge.md
       factory/yamiochi.dot

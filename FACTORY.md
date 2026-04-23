@@ -72,6 +72,13 @@ The human-owned factory blueprint is defined in `factory/yamiochi.dot`.
 
 Executable Fabro workflows live under `.fabro/workflows/` and should stay aligned with that blueprint.
 
+The current control-plane split is:
+
+- `select-work` chooses the next issue, preferring human-filed milestone work.
+- `implement-issue` produces a candidate diff plus judge/merge-gate artifacts.
+- `repair-pr` is the follow-up loop when CI finds something local validation missed.
+- `factory/scripts/autopilot.rb` is the host-side supervisor that creates disposable worktrees, runs Fabro, opens PRs, watches CI, merges green diffs, closes issues, and promotes merge-gate baselines.
+
 ## 5. What Agents Can Modify
 
 | Path | Agent write? | Owner |

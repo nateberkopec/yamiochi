@@ -4,25 +4,29 @@ digraph YamiochiFactory {
     ]
     rankdir=LR
 
-    start [shape=Mdiamond, label="Start"]
-    exit  [shape=Msquare, label="Exit"]
+    start         [shape=Mdiamond, label="Start"]
+    exit          [shape=Msquare, label="Exit"]
+    select_work   [label="Select Work", shape=component]
+    fetch_issue   [label="Fetch Issue", shape=parallelogram]
+    plan          [label="Plan"]
+    implement     [label="Implement"]
+    validate      [label="Lint + Unit + Scenarios + Bench", shape=parallelogram]
+    deny_paths    [label="Denied Paths", shape=parallelogram]
+    judge         [label="Judge Review"]
+    merge_gates   [label="Merge Gates", shape=diamond]
+    open_pr       [label="Push Branch + Open PR", shape=parallelogram]
+    watch_ci      [label="Watch CI", shape=diamond]
+    repair        [label="Repair PR"]
+    merge         [label="Merge PR", shape=parallelogram]
+    close_issue   [label="Close Issue + Promote Baseline", shape=parallelogram]
 
-    select_work [label="Select Work", shape=component]
-    plan        [label="Plan"]
-    implement   [label="Implement"]
-    lint        [label="Lint", shape=parallelogram]
-    unit_test   [label="Unit Tests", shape=parallelogram]
-    scenarios   [label="Scenario Gates", shape=parallelogram]
-    bench       [label="Benchmark Lane", shape=parallelogram]
-    deny_paths  [label="Denied Paths", shape=parallelogram]
-    judge       [label="Judge Review"]
-    merge_gate  [label="Merge Gate", shape=diamond]
-    merge       [label="Open PR / Merge"]
-
-    start -> select_work -> plan -> implement -> lint -> unit_test -> scenarios -> bench -> deny_paths -> judge -> merge_gate
-
-    merge_gate -> merge     [label="Pass", condition="outcome=success"]
-    merge_gate -> implement [label="Revise"]
-
-    merge -> exit
+    start -> select_work -> fetch_issue -> plan -> implement -> validate -> deny_paths -> judge -> merge_gates
+    merge_gates -> open_pr   [label="Pass"]
+    merge_gates -> implement [label="Revise"]
+    open_pr -> watch_ci
+    watch_ci -> merge  [label="Green"]
+    watch_ci -> repair [label="Red"]
+    repair -> validate
+    merge -> close_issue -> select_work
+    select_work -> exit [label="No work"]
 }

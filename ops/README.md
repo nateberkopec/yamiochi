@@ -18,7 +18,7 @@ The current deployment target is a **single EX63** that hosts:
 
 - Fabro control plane services
 - a locally-built Docker sandbox image for Fabro runs
-- lightweight agent runners
+- a lightweight autopilot loop that selects work, creates disposable worktrees, opens PRs, watches CI, merges green diffs, and promotes merge-gate baselines
 - self-hosted GitHub Actions runners for the broader validation suite, including benchmarks on the heavy lane
 - Tailscale + a private HTTPS UI on the host's MagicDNS name
 - a narrow public webhook ingress

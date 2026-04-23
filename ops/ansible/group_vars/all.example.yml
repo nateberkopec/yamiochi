@@ -5,6 +5,7 @@ factory_runtime_env_local_path: "{{ playbook_dir }}/../.secrets/factory.env"
 
 factory_repo_url: https://github.com/nateberkopec/yamiochi.git
 factory_repo_ref: main
+factory_repo_checkout_path: "{{ factory_state_root }}/repos/yamiochi"
 factory_fabro_image: ghcr.io/fabro-sh/fabro:nightly
 factory_sandbox_image: fabro-agent:latest
 factory_sandbox_base_image: ruby:3.3-bookworm

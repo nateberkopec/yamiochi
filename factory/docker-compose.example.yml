@@ -8,6 +8,9 @@ version: "3.9"
 # - Public ingress is handled separately by Caddy and should expose only
 #   POST /api/v1/webhooks/github.
 # - Heavy benchmark work runs on the heavyweight self-hosted GitHub runner.
+# - A lightweight autopilot process selects work, creates disposable worktrees,
+#   runs Fabro, opens PRs, watches CI, merges green diffs, and promotes merge
+#   gate baselines.
 
 services:
   fabro:
@@ -29,6 +32,31 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:32276:32276"
+
+  factory-autopilot:
+    image: fabro-agent:latest
+    restart: unless-stopped
+    depends_on:
+      - fabro
+    environment:
+      FABRO_SERVER: http://fabro:32276
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GH_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_REPOSITORY: nateberkopec/yamiochi
+      YAMIOCHI_FACTORY_REPOSITORY: nateberkopec/yamiochi
+      YAMIOCHI_FACTORY_BASELINE_FILE: /var/lib/yamiochi-factory/baselines/merge-gates.json
+      YAMIOCHI_FACTORY_WORKTREE_ROOT: /var/lib/yamiochi-factory/worktrees
+    command:
+      - bash
+      - -lc
+      - |
+        cd /var/lib/yamiochi-factory/repos/yamiochi
+        while true; do
+          ruby factory/scripts/autopilot.rb --once || true
+          sleep 30
+        done
+    volumes:
+      - /var/lib/yamiochi-factory:/var/lib/yamiochi-factory
 
   github-runner-fast:
     image: ghcr.io/myoung34/docker-github-actions-runner:latest

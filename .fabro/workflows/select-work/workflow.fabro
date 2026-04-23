@@ -1,0 +1,12 @@
+digraph YamiochiSelectWork {
+    graph [goal="Select the next Yamiochi issue for the autonomous factory"]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    select_issue [label="Select Issue", shape=parallelogram, script="mkdir -p tmp && ruby factory/scripts/select_work.rb tmp/selected-issue.json", timeout=5m, goal_gate=true]
+    summarize [label="Summarize Selection", shape=tab, prompt="Read @tmp/selected-issue.json and summarize why this issue should run next. Prefer milestone-bearing human-filed issues first, then the oldest remaining open issue."]
+
+    start -> select_issue -> summarize -> exit
+}

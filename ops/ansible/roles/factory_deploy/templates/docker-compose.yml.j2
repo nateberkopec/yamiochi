@@ -1,6 +1,32 @@
 version: "3.9"
 
 services:
+  factory-autopilot:
+    image: {{ factory_sandbox_image }}
+    restart: unless-stopped
+    environment:
+      FABRO_SERVER: http://127.0.0.1:{{ factory_fabro.listen_port }}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GH_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_REPOSITORY: {{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}
+      YAMIOCHI_FACTORY_REPOSITORY: {{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}
+      YAMIOCHI_FACTORY_BASELINE_FILE: {{ factory_state_root }}/baselines/merge-gates.json
+      YAMIOCHI_FACTORY_WORKTREE_ROOT: {{ factory_state_root }}/worktrees
+    command:
+      - bash
+      - -lc
+      - |
+        cd {{ factory_repo_checkout_path }}
+        while true; do
+          ruby factory/scripts/autopilot.rb --once || true
+          sleep 30
+        done
+    volumes:
+      - {{ factory_state_root }}:{{ factory_state_root }}
+    network_mode: host
+    cpus: 1.0
+    mem_limit: 2g
+
   github-runner-fast:
     image: {{ factory_github_runner_image }}
     restart: unless-stopped

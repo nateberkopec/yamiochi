@@ -1,16 +1,19 @@
 digraph YamiochiImplementIssue {
-    graph [goal="Implement the GitHub issue identified by $goal while advancing SPEC.md and respecting FACTORY.md"]
+    graph [goal="Implement the GitHub issue identified by $goal while advancing SPEC.md, FACTORY.md, and the merge gates"]
     rankdir=LR
 
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
 
-    fetch_issue [label="Fetch Issue", shape=parallelogram, script="mkdir -p tmp && curl -fsSL -H 'Accept: application/vnd.github+json' https://api.github.com/repos/nateberkopec/yamiochi/issues/$goal > tmp/issue.json && cat tmp/issue.json", timeout=5m]
-    plan [label="Plan", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, and tmp/issue.json. Write a concrete implementation plan to tmp/plan.md. Keep the change small, stay within allowed paths, and call out tests to add or update.", timeout=15m]
+    fetch_issue [label="Fetch Issue", shape=parallelogram, script="mkdir -p tmp/factory-gates && ruby factory/scripts/fetch_issue.rb $goal tmp/issue.json", timeout=5m]
+    plan [label="Plan", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, and @tmp/issue.json. Write a concrete implementation plan to tmp/plan.md. Keep the change small, stay within allowed paths, and call out tests to add or update.", timeout=15m]
     implement [label="Implement", prompt="Read @tmp/plan.md and implement it. Only modify allowed paths. Add or update unit tests as needed, and stop only when the best current attempt is ready for validation.", timeout=45m]
-    validate [label="Validate", shape=parallelogram, script="mise trust . >/dev/null 2>&1 || true; mise run lint && mise run test && mise run scenarios", timeout=20m, goal_gate=true]
+    validate [label="Validate", shape=parallelogram, script="ruby factory/scripts/run_candidate_checks.rb tmp/factory-gates/validation.json", timeout=20m, goal_gate=true]
     deny_paths [label="Check Denied Paths", shape=parallelogram, script="ruby factory/scripts/check_denied_paths.rb", timeout=2m, goal_gate=true]
-    summarize [label="Summarize Outcome", shape=tab, prompt="Summarize the completed change for a human operator. Include: issue addressed, files changed, commands that passed, and any remaining risks or follow-ups."]
+    judge [label="Judge Review", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, @tmp/issue.json, and @tmp/factory-gates/validation.json. Inspect the candidate diff against origin/main. Write the exact judge output format from factory/judge.md to tmp/judge.md and return the same text.", timeout=15m]
+    judge_gate [label="Check Judge Score", shape=parallelogram, script="ruby factory/scripts/check_judge.rb tmp/judge.md", timeout=2m, goal_gate=true]
+    merge_gates [label="Check Merge Gates", shape=parallelogram, script="ruby factory/scripts/check_merge_gates.rb tmp/factory-gates/validation.json tmp/judge.md tmp/factory-gates/report.json", timeout=2m, goal_gate=true]
+    summarize [label="Summarize Outcome", shape=tab, prompt="Summarize the completed change for the factory operator. Include: issue addressed, files changed, validation results from tmp/factory-gates/validation.json, judge decision from tmp/judge.md, merge-gate result from tmp/factory-gates/report.json, and any remaining risks or follow-ups."]
 
-    start -> fetch_issue -> plan -> implement -> validate -> deny_paths -> summarize -> exit
+    start -> fetch_issue -> plan -> implement -> validate -> deny_paths -> judge -> judge_gate -> merge_gates -> summarize -> exit
 }

@@ -36,6 +36,14 @@ name = "{{ factory_model.name }}"
 [run.sandbox]
 provider = "local"
 
+[run.sandbox.env]
+GITHUB_TOKEN = "{{ factory_local_env.GITHUB_TOKEN }}"
+GH_TOKEN = "{{ factory_local_env.GITHUB_TOKEN }}"
+GITHUB_REPOSITORY = "{{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}"
+YAMIOCHI_FACTORY_REPOSITORY = "{{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}"
+YAMIOCHI_FACTORY_BASELINE_FILE = "{{ factory_state_root }}/baselines/merge-gates.json"
+YAMIOCHI_FACTORY_WORKTREE_ROOT = "{{ factory_state_root }}/worktrees"
+
 [run.git.author]
 name = "yamiochi-factory"
 email = "yamiochi-factory@speedshop.co"

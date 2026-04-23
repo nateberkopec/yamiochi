@@ -31,3 +31,7 @@ run = "ruby -S rake build"
 [tasks.dev]
 description = "Explain the current development entrypoint status"
 run = "ruby -e 'warn %{Yamiochi does not have a runnable server entrypoint yet. Implement exe/yamiochi and update this task when ready.}'"
+
+[tasks.factory]
+description = "Run one autonomous factory cycle against the configured Fabro server"
+run = "ruby factory/scripts/autopilot.rb --once"
