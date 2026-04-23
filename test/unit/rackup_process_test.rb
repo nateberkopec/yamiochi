@@ -48,7 +48,8 @@ class YamiochiRackupProcessTest < Minitest::Test
       headers = response_headers(response_text)
       assert_equal "Yamiochi", headers.fetch("Server")
       assert_equal "close", headers.fetch("Connection")
-      assert_equal "17", headers.fetch("Content-Length")
+      refute headers.key?("Content-Length")
+      assert_equal "chunked", headers.fetch("Transfer-Encoding")
       assert headers.key?("Date"), "Expected response to include a Date header"
     end
   end
@@ -102,8 +103,35 @@ class YamiochiRackupProcessTest < Minitest::Test
   end
 
   def response_body(response_text)
-    _head, body = response_text.split("\r\n\r\n", 2)
+    headers = response_headers(response_text)
+    body = wire_response_body(response_text)
+    return decode_chunked_body(body) if headers["Transfer-Encoding"] == "chunked"
+
     body
+  end
+
+  def wire_response_body(response_text)
+    _head, body = response_text.split("\r\n\r\n", 2)
+    body.to_s
+  end
+
+  def decode_chunked_body(body)
+    remaining = body.to_s.b
+    decoded = String.new.b
+
+    loop do
+      line_end = remaining.index("\r\n")
+      raise "Malformed chunked body: missing size delimiter" unless line_end
+
+      chunk_size = Integer(remaining.byteslice(0, line_end), 16)
+      remaining = remaining.byteslice(line_end + 2, remaining.bytesize).to_s
+      break if chunk_size.zero?
+
+      decoded << remaining.byteslice(0, chunk_size)
+      remaining = remaining.byteslice(chunk_size + 2, remaining.bytesize).to_s
+    end
+
+    decoded
   end
 
   def response_head(response_text)

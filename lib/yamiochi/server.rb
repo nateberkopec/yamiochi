@@ -343,28 +343,55 @@ module Yamiochi
     def write_rack_response(client, request_method, status, headers, body)
       response_status = Integer(status)
       response_headers = headers || {}
-      response_body = read_response_body(body)
-      normalized_headers = build_response_headers(response_headers, response_body)
+      body_framing = response_framing(response_headers)
+      normalized_headers = build_response_headers(response_headers, body_framing)
 
       client.write("HTTP/1.1 #{response_status} #{reason_phrase(response_status)}\r\n")
       normalized_headers.each do |name, value|
         client.write("#{name}: #{value}\r\n")
       end
       client.write("\r\n")
-      client.write(response_body) unless request_method == "HEAD"
+      write_response_body(client, body, body_framing) unless request_method == "HEAD"
     ensure
       body.close if body.respond_to?(:close)
     end
 
-    def read_response_body(body)
-      response_body = String.new.b
-      body.each do |chunk|
-        response_body << chunk.to_s
-      end
-      response_body
+    def response_framing(headers)
+      return :transfer_encoded if response_header?(headers, "Transfer-Encoding")
+      return :content_length if response_header?(headers, "Content-Length")
+
+      :chunked
     end
 
-    def build_response_headers(headers, response_body)
+    def write_response_body(client, body, body_framing)
+      case body_framing
+      when :chunked
+        write_chunked_response_body(client, body)
+      else
+        write_identity_response_body(client, body)
+      end
+    end
+
+    def write_identity_response_body(client, body)
+      body.each do |chunk|
+        client.write(chunk.to_s)
+      end
+    end
+
+    def write_chunked_response_body(client, body)
+      body.each do |chunk|
+        chunk = chunk.to_s
+        next if chunk.empty?
+
+        client.write("#{chunk.bytesize.to_s(16)}\r\n")
+        client.write(chunk)
+        client.write("\r\n")
+      end
+
+      client.write("0\r\n\r\n")
+    end
+
+    def build_response_headers(headers, response_framing)
       response_headers = headers.each_with_object({}) do |(name, value), normalized_headers|
         normalized_headers[name.to_s] = value.to_s
       end
@@ -373,8 +400,8 @@ module Yamiochi
       set_response_header!(response_headers, "Connection", "close")
       set_response_header!(response_headers, "Date", Time.now.httpdate)
 
-      unless response_header?(response_headers, "Content-Length") || response_header?(response_headers, "Transfer-Encoding")
-        response_headers["Content-Length"] = response_body.bytesize.to_s
+      if response_framing == :chunked
+        set_response_header!(response_headers, "Transfer-Encoding", "chunked")
       end
 
       response_headers
