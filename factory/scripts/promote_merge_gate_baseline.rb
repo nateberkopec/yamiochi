@@ -3,15 +3,18 @@
 
 require "json"
 require "fileutils"
-require_relative "lib/yamiochi_factory/merge_gates"
+require_relative "lib/yamiochi_factory/gate_registry"
+require_relative "lib/yamiochi_factory/gate_state"
 
 report_path = ARGV[0] || "tmp/factory-gates/report.json"
-baseline_path = ARGV[1] || ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "tmp/factory-gates/baseline.json"
+state_path = ARGV[1] || ENV["YAMIOCHI_FACTORY_GATE_STATE_FILE"] || ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "tmp/factory-gates/gates.json"
+registry_path = ARGV[2] || ENV["YAMIOCHI_FACTORY_GATE_REGISTRY"] || "factory/gates.yml"
 
+registry = YamiochiFactory::GateRegistry.load(registry_path)
 report = JSON.parse(File.read(report_path))
-baseline = File.exist?(baseline_path) ? JSON.parse(File.read(baseline_path)) : YamiochiFactory::MergeGates.default_baseline
-promoted = YamiochiFactory::MergeGates.promote(baseline:, report:)
+state = YamiochiFactory::GateState.load(state_path, registry:)
+promoted = YamiochiFactory::GateState.promote(state:, report:, registry:)
 
-FileUtils.mkdir_p(File.dirname(baseline_path))
-File.write(baseline_path, JSON.pretty_generate(promoted))
+FileUtils.mkdir_p(File.dirname(state_path))
+File.write(state_path, JSON.pretty_generate(promoted))
 puts JSON.pretty_generate(promoted)

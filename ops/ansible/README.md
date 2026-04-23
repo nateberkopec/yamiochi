@@ -77,7 +77,7 @@ Deploy creates a private root CA at `/etc/caddy/private-ui/rootCA.crt` and signs
 The current deployment shape assumes a single large EX63 host with three active services/lane types:
 
 - `fabro` — the control plane, using Fabro's published server image
-- `factory-autopilot` — a lightweight loop that selects the next issue, creates a disposable worktree, runs Fabro, opens a PR, waits for CI, merges green diffs, closes the issue, and promotes merge-gate baselines
+- `factory-autopilot` — a lightweight loop that prefers open PRs, then gate-derived work packets, then gate promotions, and only then fallback issues; it creates disposable worktrees, runs Fabro, opens PRs, waits for CI, merges green diffs, closes fallback issues, and promotes persistent gate state
 - `github-runner-fast` — self-hosted Actions lane for quick PR validation
 - `github-runner-heavy` — self-hosted Actions lane for heavier suites, including benchmark jobs
 
@@ -91,11 +91,11 @@ Default sizing in `group_vars/all.example.yml`:
 
 The intended workflow is:
 
-1. `factory-autopilot` selects the next open issue, preferring milestone-bearing human-filed work, and creates a disposable worktree under `{{ factory_state_root }}/worktrees`
-2. Fabro runs the repo workflow inside that disposable worktree with PR automation enabled
-3. `factory-autopilot` uses `fabro pr create` to open a PR, watches GitHub checks, and uses `fabro pr merge` once CI is green
+1. `factory-autopilot` prefers already-open PRs, then derives the next work packet from gate state under `{{ factory_state_root }}/baselines/gates.json`, and only falls back to issues when no gate-derived work is ready
+2. Fabro runs the repo workflow inside a disposable worktree under `{{ factory_state_root }}/worktrees`
+3. `factory-autopilot` opens a PR, watches GitHub checks, and merges once CI is green
 4. GitHub Actions on the self-hosted runners runs the broader suite, including benchmarks on the heavy lane
-5. Successful merges promote the ratcheted merge-gate baseline stored under `{{ factory_state_root }}/baselines/merge-gates.json`
+5. Successful merges promote the persistent gate baseline/history store at `{{ factory_state_root }}/baselines/gates.json`
 
 ## Playbooks
 
@@ -123,7 +123,7 @@ ansible-playbook -i ops/ansible/inventory/hosts.yml ops/ansible/playbooks/deploy
 Renders/copies/builds:
 
 - `docker-compose.yml`
-- `config/settings.toml` for Fabro, including sandbox GitHub token pass-through and factory baseline/worktree env vars
+- `config/settings.toml` for Fabro, including sandbox GitHub token pass-through and factory gate-state/worktree env vars
 - `sandbox-image/Dockerfile` for the local Docker sandbox image
 - local sandbox image tag from `factory_sandbox_image` (default `fabro-agent:latest`)
 - a clean checkout of `factory_repo_url` at `factory_repo_checkout_path`

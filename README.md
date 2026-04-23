@@ -14,7 +14,8 @@ Humans own the control plane:
 
 - [`SPEC.md`](./SPEC.md) defines what Yamiochi must do
 - [`FACTORY.md`](./FACTORY.md) defines how the factory is allowed to work
-- [`factory/**`](./factory), [`ops/**`](./ops), and [`.fabro/**`](./.fabro) define the workflow, deployment, gates, and supervision logic
+- [`factory/gates.yml`](./factory/gates.yml) defines the current gate frontier
+- [`factory/**`](./factory), [`ops/**`](./ops), and [`.fabro/**`](./.fabro) define the workflow, deployment, reporting, and supervision logic
 
 Agents own the implementation work inside the allowed paths, mainly under `lib/**`, `bin/**`, `exe/**`, and `test/unit/**`.
 
@@ -22,58 +23,63 @@ In practice, this means the local checkout is mainly for editing the factory's h
 
 ## How work flows through the system
 
-The factory is meant to move work through a fixed loop:
+The factory is now **gate-driven**.
 
-1. **Humans define behavior**
-   - Humans update [`SPEC.md`](./SPEC.md) and [`FACTORY.md`](./FACTORY.md).
-   - The factory turns the spec into milestone-shaped GitHub issues.
+1. **Humans define behavior and the frontier**
+   - Humans update [`SPEC.md`](./SPEC.md), [`FACTORY.md`](./FACTORY.md), and [`factory/gates.yml`](./factory/gates.yml).
+   - The gate frontier says which checks are only observed, which are ratcheted, and which are already hard blockers.
 
-2. **The factory selects the next issue**
+2. **The factory selects the next work item**
    - `factory/scripts/autopilot.rb` runs continuously on the remote host.
-   - It syncs the GitHub issue queue from the spec and selects the next factory-managed issue.
-   - Repeatedly failing issues are temporarily cooled down so the system can move on instead of getting stuck forever on one item.
+   - It prefers open PRs first, then gate-derived work packets, then eligible gate promotions, and only falls back to GitHub issues when no gate-derived work is ready.
 
 3. **Fabro runs the implementation workflow**
-   - The autopilot creates a disposable clone for the selected issue.
-   - It asks Fabro to run `.fabro/workflows/implement-issue/workflow.toml` against that clone.
+   - The autopilot creates a disposable clone for the selected work item.
+   - It asks Fabro to run the appropriate workflow against that clone.
    - Fabro then executes the agent workflow inside Docker sandboxes.
 
-4. **The candidate diff is judged locally before a PR exists**
-   - The workflow fetches the issue, plans the work, makes code changes, and runs candidate validation.
-   - Validation currently flows through the repository's `mise` frontends, especially:
+4. **The candidate diff is validated and normalized into gate results**
+   - Validation flows through the repository's `mise` frontends, especially:
      - `mise run lint`
      - `mise run test`
      - `mise run scenarios`
-   - The workflow also checks denied paths, runs the judge, and computes merge-gate artifacts.
+     - `mise run bench`
+   - The workflow checks denied paths, runs the judge, and evaluates every named gate with `factory/scripts/evaluate_gates.rb`.
 
-5. **If the candidate is good enough, it should leave the box**
-   - A successful candidate is pushed to GitHub on an issue-specific branch.
+5. **If the blocking gates pass, the diff leaves the box**
+   - A successful candidate is pushed to GitHub on a disposable branch.
    - The factory opens a pull request.
    - GitHub Actions and self-hosted runners execute CI.
 
 6. **The factory watches CI and repairs if needed**
    - If CI fails, the factory can run the repair workflow against the same PR branch.
-   - If CI passes, the factory merges the PR, closes the issue, and promotes the merge-gate baseline.
+   - If CI passes, the factory merges the PR and promotes the persistent gate state/baselines.
+   - Fallback GitHub issues are closed only when issue-backed work was actually completed.
 
-That is the core work conveyor belt: **spec -> issue -> disposable clone -> Fabro run -> local gates -> PR -> CI -> repair or merge -> next issue**.
+That is the current conveyor belt: **gate state -> work packet -> disposable clone -> Fabro run -> local gate evaluation -> PR -> CI -> repair or merge -> promoted gate state**.
 
-## How the factory is currently set up
+## Gate frontier and state
 
-Today the factory is deployed as a single remote host with a small number of long-running services:
+The control plane separates **declarative frontier** from **persistent result state**:
 
-- **Fabro server** for workflow orchestration and operator visibility
-- **`factory-autopilot`** as the host-side supervisor loop
-- **Docker sandboxes** for isolated coding runs
-- **Self-hosted GitHub Actions runners** on the same machine for CI and heavier jobs
-- **Persistent state directories** for repo mirrors, disposable clones, baselines, and run artifacts
-- **Caddy + Tailscale-first access** for the private operator UI, with narrow public ingress for GitHub App webhooks only
+- [`factory/gates.yml`](./factory/gates.yml) — human-owned registry of named gates and their current levels
+- `/var/lib/yamiochi-factory/baselines/gates.json` — persistent remote state with ratchet baselines, recent results, and promotion evidence
 
-The current live shape is intentionally simple:
+Each gate is in exactly one of these modes:
 
-- one remote host
-- one long-lived mirror checkout of the repo
-- many disposable per-issue clones under the factory state directory
-- one continuous supervisor loop that keeps selecting work
+- `observe` — always green, still reported, still generates future work
+- `ratchet` — blocks regressions versus `main`, but still allows partial progress
+- `hard` — fully passing only; blocks merges absolutely
+
+This lets the factory keep merging incremental progress from v0 → v1 without pretending unfinished holdout suites are already binary blockers.
+
+## Promotion path
+
+The factory can tighten itself, but only narrowly.
+
+- Allowed transitions: `observe -> ratchet`, `ratchet -> hard`
+- Forbidden: weakening a gate, removing a gate, or changing scoring rules in a promotion diff
+- Promotion diffs are limited to [`factory/gates.yml`](./factory/gates.yml) and must pass `factory/scripts/check_gate_promotions.rb`
 
 ## Current control-plane responsibilities
 
@@ -81,35 +87,35 @@ The current live shape is intentionally simple:
 
 Fabro is responsible for the coding workflow itself:
 
-- reading the selected issue
+- reading the selected work item
 - planning the change
 - editing allowed files
 - running local validation inside sandboxes
-- producing judge and merge-gate artifacts
+- producing judge and gate-evaluation artifacts
 
-A Fabro run being marked **successful** means the workflow completed and the candidate passed its in-run gates. It does **not** by itself mean a PR was opened or merged; GitHub-side promotion happens in the outer supervisor loop.
+A Fabro run being marked **successful** means the workflow completed and the candidate passed its in-run blocking gates. It does **not** by itself mean a PR was opened or merged; GitHub-side promotion happens in the outer supervisor loop.
 
 ### `factory-autopilot`
 
 `factory/scripts/autopilot.rb` is responsible for everything around the Fabro run:
 
-- syncing spec-derived issues
-- selecting the next issue
+- syncing fallback issue state from the spec
+- selecting gate work or fallback issues
 - creating disposable clones
 - starting Fabro runs
 - opening pull requests
 - watching CI
 - running repair attempts
 - merging green PRs
-- closing issues
-- promoting merge-gate baselines
-- cooling down repeatedly failing issues
+- closing fallback issues
+- promoting persistent gate state
+- cooling down repeatedly failing work items
 
 ## Why disposable clones are used
 
-The factory used to mutate a long-lived checkout, but the current setup favors disposable per-issue clones.
+The factory favors disposable per-run clones.
 
-That matters because each issue attempt needs:
+That matters because each attempt needs:
 
 - a clean starting point from `main`
 - isolated git metadata for branch and PR operations
@@ -124,17 +130,19 @@ Humans are expected to shape the factory, not hand-implement Yamiochi features.
 In this repository, that usually means:
 
 - refining the spec
-- improving the workflow definitions
-- tightening gates and evaluation
+- adjusting the gate frontier
+- improving evaluation and reporting
+- tightening promotion safety
 - fixing deployment and authentication problems
 - making the supervisor more autonomous and more reliable
 
-The goal is for the factory to keep turning spec-shaped work into merged changes with as little human intervention as possible.
+The goal is for the factory to keep turning gate-driven work into merged changes with as little human intervention as possible.
 
 ## Further reading
 
 - [`SPEC.md`](./SPEC.md) — the behavior Yamiochi is trying to satisfy
-- [`FACTORY.md`](./FACTORY.md) — the factory contract, gates, and ownership boundaries
+- [`FACTORY.md`](./FACTORY.md) — the factory contract, gate model, and ownership boundaries
+- [`factory/gates.yml`](./factory/gates.yml) — current gate frontier
 - [`ops/README.md`](./ops/README.md) — deployment and host setup notes
 
 ## License

@@ -8,9 +8,8 @@ version: "3.9"
 # - Public ingress is handled separately by Caddy and should expose only
 #   POST /api/v1/webhooks/github.
 # - Heavy benchmark work runs on the heavyweight self-hosted GitHub runner.
-# - A lightweight autopilot process selects work, creates disposable worktrees,
-#   runs Fabro, opens PRs, watches CI, merges green diffs, and promotes merge
-#   gate baselines.
+# - A lightweight autopilot process prefers open PRs, then gate-derived work,
+#   then promotion work, then fallback issues.
 
 services:
   fabro:
@@ -46,7 +45,8 @@ services:
       GH_TOKEN: ${GITHUB_TOKEN}
       GITHUB_REPOSITORY: nateberkopec/yamiochi
       YAMIOCHI_FACTORY_REPOSITORY: nateberkopec/yamiochi
-      YAMIOCHI_FACTORY_BASELINE_FILE: /var/lib/yamiochi-factory/baselines/merge-gates.json
+      YAMIOCHI_FACTORY_GATE_REGISTRY: /var/lib/yamiochi-factory/repos/yamiochi/factory/gates.yml
+      YAMIOCHI_FACTORY_GATE_STATE_FILE: /var/lib/yamiochi-factory/baselines/gates.json
       YAMIOCHI_FACTORY_ATTEMPTS_FILE: /var/lib/yamiochi-factory/baselines/autopilot-attempts.json
       YAMIOCHI_FACTORY_WORKTREE_ROOT: /var/lib/yamiochi-factory/worktrees
       YAMIOCHI_FACTORY_FAILURE_THRESHOLD: "1"

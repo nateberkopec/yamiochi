@@ -1,0 +1,176 @@
+version: 1
+
+gates:
+  lint:
+    title: Lint
+    level: hard
+    group: fast-feedback
+    selection_priority: 100
+    metric_type: binary
+    source:
+      kind: command
+      name: lint
+    promotion:
+      min_full_pass_streak: 3
+
+  test:
+    title: Unit tests
+    level: hard
+    group: fast-feedback
+    selection_priority: 110
+    metric_type: binary
+    source:
+      kind: command
+      name: test
+    promotion:
+      min_full_pass_streak: 3
+
+  deny_paths:
+    title: Denied path protection
+    level: hard
+    group: safety
+    selection_priority: 120
+    metric_type: binary
+    source:
+      kind: validation
+      key: deny_paths_passed
+    promotion:
+      min_full_pass_streak: 3
+
+  judge:
+    title: Judge review
+    level: hard
+    group: safety
+    selection_priority: 130
+    metric_type: binary
+    source:
+      kind: judge
+      rule: pass_threshold
+    full_pass:
+      kind: literal
+      value: true
+    promotion:
+      min_full_pass_streak: 3
+
+  internal_scenarios:
+    title: Internal scenarios
+    level: ratchet
+    group: scenarios
+    selection_priority: 10
+    metric_type: score
+    source:
+      kind: score
+      key: internal_scenarios
+    baseline:
+      kind: exact
+    full_pass:
+      kind: metadata
+      key: internal_scenarios
+    promotion:
+      min_full_pass_streak: 3
+
+  benchmark_rps:
+    title: Benchmark throughput
+    level: ratchet
+    group: benchmark
+    selection_priority: 30
+    metric_type: score
+    source:
+      kind: score
+      key: benchmark_rps
+    baseline:
+      kind: ratio
+      ratio: 0.95
+    full_pass:
+      kind: none
+    promotion:
+      min_full_pass_streak: 5
+
+  spec_definition_of_done:
+    title: SPEC definition of done
+    level: ratchet
+    group: spec
+    selection_priority: 20
+    metric_type: score
+    source:
+      kind: score
+      key: spec_definition_of_done
+    baseline:
+      kind: exact
+    full_pass:
+      kind: metadata
+      key: spec_definition_of_done
+    promotion:
+      min_full_pass_streak: 3
+
+  sinatra_fixture:
+    title: Sinatra fixture
+    level: observe
+    group: external-fixtures
+    selection_priority: 40
+    metric_type: score
+    source:
+      kind: score
+      key: sinatra_fixture
+    full_pass:
+      kind: literal
+      value: 1
+    promotion:
+      min_full_pass_streak: 3
+
+  rails_fixture:
+    title: Rails fixture
+    level: observe
+    group: external-fixtures
+    selection_priority: 50
+    metric_type: score
+    source:
+      kind: score
+      key: rails_fixture
+    full_pass:
+      kind: literal
+      value: 1
+    promotion:
+      min_full_pass_streak: 3
+
+  h1spec:
+    title: h1spec
+    level: observe
+    group: external-protocol
+    selection_priority: 60
+    metric_type: score
+    source:
+      kind: score
+      key: h1spec
+    full_pass:
+      kind: none
+    promotion:
+      min_full_pass_streak: 3
+
+  redbot:
+    title: REDbot
+    level: observe
+    group: external-http
+    selection_priority: 70
+    metric_type: score
+    source:
+      kind: score
+      key: redbot
+    full_pass:
+      kind: none
+    promotion:
+      min_full_pass_streak: 3
+
+  http_probe:
+    title: http-probe.com
+    level: observe
+    group: external-http
+    selection_priority: 80
+    metric_type: score
+    source:
+      kind: score
+      key: http_probe
+    full_pass:
+      kind: none
+    promotion:
+      min_full_pass_streak: 3

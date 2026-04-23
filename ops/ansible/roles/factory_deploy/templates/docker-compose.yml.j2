@@ -12,7 +12,8 @@ services:
       GH_TOKEN: ${GITHUB_TOKEN}
       GITHUB_REPOSITORY: {{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}
       YAMIOCHI_FACTORY_REPOSITORY: {{ factory_repo_url | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}
-      YAMIOCHI_FACTORY_BASELINE_FILE: {{ factory_state_root }}/baselines/merge-gates.json
+      YAMIOCHI_FACTORY_GATE_REGISTRY: {{ factory_repo_checkout_path }}/factory/gates.yml
+      YAMIOCHI_FACTORY_GATE_STATE_FILE: {{ factory_state_root }}/baselines/gates.json
       YAMIOCHI_FACTORY_ATTEMPTS_FILE: {{ factory_state_root }}/baselines/autopilot-attempts.json
       YAMIOCHI_FACTORY_WORKTREE_ROOT: {{ factory_state_root }}/worktrees
       YAMIOCHI_FACTORY_FAILURE_THRESHOLD: "1"

@@ -1,10 +1,13 @@
+#!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "rbconfig"
 require "shellwords"
 
 base_ref = ARGV[0] || "origin/main"
 deny_list_path = ARGV[1] || File.join(__dir__, "..", "deny_paths.txt")
 flags = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
+promotion_surface = "factory/gates.yml"
 
 patterns = File.readlines(deny_list_path, chomp: true)
   .map(&:strip)
@@ -24,7 +27,19 @@ changed_files = `git diff --name-only #{merge_base}...HEAD`
   .map(&:strip)
   .reject(&:empty?)
 
+promotion_only_diff = changed_files == [promotion_surface]
+promotion_allowed = promotion_only_diff && system(
+  RbConfig.ruby,
+  File.join(__dir__, "check_gate_promotions.rb"),
+  base_ref,
+  promotion_surface,
+  out: File::NULL,
+  err: File::NULL
+)
+
 violations = changed_files.select do |path|
+  next false if path == promotion_surface && promotion_allowed
+
   patterns.any? { |pattern| File.fnmatch?(pattern, path, flags) }
 end
 

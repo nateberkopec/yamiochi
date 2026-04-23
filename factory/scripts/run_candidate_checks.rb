@@ -27,7 +27,8 @@ results = commands.transform_values do |command|
 end
 
 scenario_total = Dir.glob("test/scenarios/**/*_test.rb").count
-spec_definition_of_done = File.read("SPEC.md").scan(/^\s*- \[x\] /i).count
+spec_completed = File.read("SPEC.md").scan(/^\s*- \[x\] /i).count
+spec_total = File.read("SPEC.md").scan(/^\s*- \[(?: |x)\] /i).count
 benchmark_output = results.fetch("bench").fetch("stdout")
 benchmark_rps = benchmark_output[/([0-9]+(?:\.[0-9]+)?)\s*(?:req\/s|requests per second)/i, 1]&.to_f || 0.0
 
@@ -42,11 +43,15 @@ payload = {
     "rails_fixture" => 0,
     "internal_scenarios" => results.dig("scenarios", "success") ? scenario_total : 0,
     "benchmark_rps" => benchmark_rps,
-    "spec_definition_of_done" => spec_definition_of_done
+    "spec_definition_of_done" => spec_completed
+  },
+  "maximums" => {
+    "internal_scenarios" => scenario_total,
+    "spec_definition_of_done" => spec_total
   }
 }
 
 File.write(output_path, JSON.pretty_generate(payload))
 puts JSON.pretty_generate(payload)
 
-exit 1 unless results.values.all? { |result| result.fetch("success") }
+exit 1 unless results.fetch_values("lint", "test", "scenarios").all? { |result| result.fetch("success") }

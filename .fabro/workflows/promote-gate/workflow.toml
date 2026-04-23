@@ -3,8 +3,5 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
-[run]
-goal = "Select the next Yamiochi work item"
-
 [run.pull_request]
 enabled = false

@@ -7,16 +7,23 @@ require "open3"
 require "optparse"
 require "shellwords"
 require "time"
+require_relative "lib/yamiochi_factory/gate_promotion"
+require_relative "lib/yamiochi_factory/gate_registry"
+require_relative "lib/yamiochi_factory/gate_state"
 require_relative "lib/yamiochi_factory/github_client"
 require_relative "lib/yamiochi_factory/selection"
+require_relative "lib/yamiochi_factory/work_packets"
 
 module YamiochiFactory
   class Autopilot
+    FACTORY_BRANCH_PREFIXES = %w[issue- gate- promote-].freeze
+
     def initialize(repo_root:, options:)
       @repo_root = repo_root
       @options = options
       @github = GitHubClient.new
       @baseline_file = options.fetch(:baseline_file)
+      @gate_registry_path = options.fetch(:gate_registry_path)
       @worktree_root = options.fetch(:worktree_root)
       @attempts_file = options.fetch(:attempts_file)
       FileUtils.mkdir_p(@worktree_root)
@@ -32,20 +39,27 @@ module YamiochiFactory
         sync_queue
 
         completed += 1
+        work_item = nil
+        pull_request = nil
+
         begin
           if (pull_request = select_pull_request)
             resume_pull_request(pull_request)
-            clear_issue_failure(pull_request.fetch("issue_number"))
+            clear_work_failure(pull_request.fetch("issue_number") ? issue_failure_key(pull_request.fetch("issue_number")) : nil)
           else
-            issue = select_issue
-            break unless issue
+            work_item = select_work_item
+            break unless work_item
 
-            process_issue(issue)
-            clear_issue_failure(issue.fetch("number"))
+            process_work_item(work_item)
+            clear_work_failure(work_failure_key(work_item))
           end
         rescue StandardError => e
-          issue_number = pull_request&.fetch("issue_number", nil) || issue&.fetch("number", nil)
-          record_issue_failure(issue_number, e) if issue_number
+          failure_key = if work_item
+            work_failure_key(work_item)
+          elsif pull_request&.fetch("issue_number", nil)
+            issue_failure_key(pull_request.fetch("issue_number"))
+          end
+          record_work_failure(failure_key, e) if failure_key
           warn e.full_message
         end
         break if options.fetch(:once)
@@ -55,25 +69,48 @@ module YamiochiFactory
 
     private
 
-    attr_reader :repo_root, :options, :github, :baseline_file, :worktree_root, :attempts_file
+    attr_reader :repo_root, :options, :github, :baseline_file, :gate_registry_path, :worktree_root, :attempts_file
 
-    def process_issue(issue)
-      issue_number = issue.fetch("number")
-      worktree = create_mainline_worktree(issue)
+    def process_work_item(work_item)
+      case work_item.fetch("type")
+      when "issue", "gate_packet"
+        process_candidate_work_item(work_item)
+      when "gate_promotion"
+        process_promotion_work_item(work_item)
+      else
+        raise "Unknown work item type #{work_item.fetch('type').inspect}"
+      end
+    end
+
+    def process_candidate_work_item(work_item)
+      worktree = create_mainline_worktree(work_item)
       worktree_dir = worktree.fetch(:dir)
-      run_id = run_workflow_with_retries(worktree_dir, options.fetch(:workflow), issue_number)
+      goal = workflow_goal_for(worktree_dir, work_item)
+      run_id = run_workflow_with_retries(worktree_dir, options.fetch(:workflow), goal)
       fabro_run_branch = recorded_run_branch(run_id)
       run_branch = fabro_run_branch || worktree.fetch(:branch_name)
       pull_request = create_or_fetch_pull_request(
         run_id,
-        issue,
+        work_item,
         worktree_dir,
         run_branch,
         fabro_run_branch:
       )
 
-      stabilize_pull_request(run_id:, pull_request:, issue_number:)
+      stabilize_pull_request(run_id:, pull_request:, issue_number: work_item["number"])
       promote_baseline(worktree_dir)
+    ensure
+      cleanup_worktree(worktree_dir, keep: $ERROR_INFO)
+    end
+
+    def process_promotion_work_item(work_item)
+      worktree = create_mainline_worktree(work_item)
+      worktree_dir = worktree.fetch(:dir)
+      goal = workflow_goal_for(worktree_dir, work_item)
+      run_id = run_workflow_with_retries(worktree_dir, options.fetch(:promotion_workflow), goal)
+      run_branch = recorded_run_branch(run_id) || worktree.fetch(:branch_name)
+      pull_request = manual_create_pull_request(work_item, worktree_dir, run_branch)
+      stabilize_pull_request(run_id: nil, pull_request:, issue_number: nil)
     ensure
       cleanup_worktree(worktree_dir, keep: $ERROR_INFO)
     end
@@ -96,19 +133,43 @@ module YamiochiFactory
       )
 
       pull_requests
+        .select { |pull_request| factory_branch?(pull_request.fetch("headRefName", "")) }
         .map do |pull_request|
           issue_number = issue_number_from_branch(pull_request.fetch("headRefName", ""))
-          next unless issue_number
-
           pull_request.merge("issue_number" => issue_number)
         end
-        .compact
         .min_by { |pull_request| [pull_request.fetch("createdAt"), pull_request.fetch("number")] }
+    end
+
+    def select_work_item
+      registry = GateRegistry.load(gate_registry_path)
+      state = GateState.load(baseline_file, registry:)
+
+      packet = WorkPackets.from_state(registry:, state:, state_path: baseline_file)
+        .reject { |item| suppressed_work?(work_failure_key(item)) }
+        .first
+      return packet if packet
+
+      promotion = GatePromotion.eligible_promotions(registry:, state:)
+        .map { |proposal| GatePromotion.to_work_item(proposal) }
+        .reject { |item| suppressed_work?(work_failure_key(item)) }
+        .first
+      return promotion if promotion
+
+      issue = select_issue
+      return unless issue
+
+      issue.merge(
+        "type" => "issue",
+        "id" => issue_failure_key(issue.fetch("number")),
+        "pull_request_title" => issue.fetch("title"),
+        "branch_slug" => "issue-#{issue.fetch('number')}"
+      )
     end
 
     def select_issue
       issues = github.issues
-      available_issues = issues.reject { |issue| suppressed_issue?(issue.fetch("number")) }
+      available_issues = issues.reject { |issue| suppressed_work?(issue_failure_key(issue.fetch("number"))) }
       Selection.select_issue(available_issues)
     end
 
@@ -127,23 +188,22 @@ module YamiochiFactory
         checks = wait_for_checks(pull_request.fetch("number"))
         if checks.fetch(:status) == :success
           merge_pull_request(run_id, pull_request)
-          close_issue(issue_number, pull_request.fetch("number"))
+          close_issue(issue_number, pull_request.fetch("number")) if issue_number
           return
         end
 
         repair_attempt += 1
         if repair_attempt > options.fetch(:max_repairs)
-          raise "PR ##{pull_request.fetch("number")} failed after #{repair_attempt - 1} repair attempts"
+          raise "PR ##{pull_request.fetch('number')} failed after #{repair_attempt - 1} repair attempts"
         end
 
         repair_pull_request(pull_request.fetch("number"), repair_attempt)
       end
     end
 
-    def create_mainline_worktree(issue)
-      slug = issue.fetch("title").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
+    def create_mainline_worktree(work_item)
       timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S")
-      branch_name = "issue-#{issue.fetch("number")}-#{slug}-#{timestamp}"
+      branch_name = branch_name_for(work_item, timestamp:)
 
       {
         dir: create_clone(branch_name, branch_name:, start_point: "origin/main"),
@@ -162,6 +222,26 @@ module YamiochiFactory
         ),
         branch_name:
       }
+    end
+
+    def branch_name_for(work_item, timestamp:)
+      case work_item.fetch("type")
+      when "issue"
+        slug = work_item.fetch("title").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
+        "issue-#{work_item.fetch('number')}-#{slug}-#{timestamp}"
+      else
+        slug = work_item.fetch("branch_slug").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 60]
+        "#{slug}-#{timestamp}"
+      end
+    end
+
+    def workflow_goal_for(worktree_dir, work_item)
+      return work_item.fetch("number").to_s if work_item.fetch("type") == "issue"
+
+      goal_path = File.join(worktree_dir, "tmp", "factory-goal.json")
+      FileUtils.mkdir_p(File.dirname(goal_path))
+      File.write(goal_path, JSON.pretty_generate(work_item))
+      "file:tmp/factory-goal.json"
     end
 
     def create_clone(name, branch_name:, start_point:)
@@ -197,7 +277,7 @@ module YamiochiFactory
       )
       run_id = JSON.parse(stdout).fetch("run_id")
       wait_status = JSON.parse(capture!(["fabro", "wait", run_id, "--json"], chdir: worktree_dir, env: fabro_env).first)
-      raise "Fabro run #{run_id} finished with status #{wait_status.fetch("status")}" unless wait_status.fetch("status") == "succeeded"
+      raise "Fabro run #{run_id} finished with status #{wait_status.fetch('status')}" unless wait_status.fetch("status") == "succeeded"
 
       run_id
     end
@@ -210,13 +290,13 @@ module YamiochiFactory
       JSON.parse(capture!(["fabro", "inspect", run_id, "--json"], chdir: repo_root, env: fabro_env).first)
     end
 
-    def create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch, fabro_run_branch: nil)
-      return manual_create_pull_request(issue, worktree_dir, run_branch) if fabro_run_branch.to_s.empty?
+    def create_or_fetch_pull_request(run_id, work_item, worktree_dir, run_branch, fabro_run_branch: nil)
+      return manual_create_pull_request(work_item, worktree_dir, run_branch) if fabro_run_branch.to_s.empty? || work_item.fetch("type") != "issue"
 
       create_pull_request(run_id)
       pull_request_record(run_id)
     rescue StandardError
-      manual_create_pull_request(issue, worktree_dir, run_branch)
+      manual_create_pull_request(work_item, worktree_dir, run_branch)
     end
 
     def create_pull_request(run_id)
@@ -227,20 +307,31 @@ module YamiochiFactory
       JSON.parse(capture!("fabro pr view #{run_id} --json", chdir: repo_root, env: fabro_env, shell: true).first)
     end
 
-    def manual_create_pull_request(issue, worktree_dir, branch_name)
-      commit_if_needed(worktree_dir, "Implement ##{issue.fetch("number")}: #{issue.fetch("title")}")
+    def manual_create_pull_request(work_item, worktree_dir, branch_name)
+      commit_if_needed(worktree_dir, commit_message_for(work_item))
       capture!(["git", "push", "-u", "origin", "HEAD:#{branch_name}"], chdir: worktree_dir)
       capture!(
         [
           "gh", "pr", "create", "-R", github.repository,
           "--head", branch_name,
           "--base", "main",
-          "--title", issue.fetch("title"),
+          "--title", work_item.fetch("pull_request_title", work_item.fetch("title")),
           "--body", ""
         ],
         chdir: worktree_dir
       )
       view_pull_request(branch_name)
+    end
+
+    def commit_message_for(work_item)
+      case work_item.fetch("type")
+      when "issue"
+        "Implement ##{work_item.fetch('number')}: #{work_item.fetch('title')}"
+      when "gate_promotion"
+        "Promote gate #{work_item.fetch('target_gate')} to #{work_item.fetch('next_level')}"
+      else
+        "Improve gate #{work_item.fetch('target_gate')}: #{work_item.fetch('priority_reason').tr('_', ' ')}"
+      end
     end
 
     def merge_pull_request(run_id, pull_request)
@@ -346,13 +437,15 @@ module YamiochiFactory
 
     def promote_baseline(worktree_dir)
       capture!(
-        ["ruby", "factory/scripts/promote_merge_gate_baseline.rb", "tmp/factory-gates/report.json", baseline_file],
+        ["ruby", "factory/scripts/promote_merge_gate_baseline.rb", "tmp/factory-gates/report.json", baseline_file, gate_registry_path],
         chdir: worktree_dir
       )
     end
 
-    def suppressed_issue?(issue_number)
-      cooldown_until = load_attempt_state.dig(issue_number.to_s, "cooldown_until")
+    def suppressed_work?(key)
+      return false if key.to_s.empty?
+
+      cooldown_until = load_attempt_state.dig(key, "cooldown_until")
       return false if cooldown_until.to_s.empty?
 
       Time.parse(cooldown_until) > Time.now.utc
@@ -360,19 +453,20 @@ module YamiochiFactory
       false
     end
 
-    def clear_issue_failure(issue_number)
+    def clear_work_failure(key)
+      return if key.to_s.empty?
+
       state = load_attempt_state
-      return unless state.delete(issue_number.to_s)
+      return unless state.delete(key)
 
       save_attempt_state(state)
     end
 
-    def record_issue_failure(issue_number, error)
-      return unless issue_number
+    def record_work_failure(key, error)
+      return if key.to_s.empty?
 
       state = load_attempt_state
-      issue_key = issue_number.to_s
-      record = state.fetch(issue_key, {})
+      record = state.fetch(key, {})
       failures = record.fetch("failures", 0) + 1
       timestamp = Time.now.utc
 
@@ -388,7 +482,7 @@ module YamiochiFactory
         updated_record.delete("cooldown_until")
       end
 
-      state[issue_key] = updated_record
+      state[key] = updated_record
       save_attempt_state(state)
     end
 
@@ -409,8 +503,20 @@ module YamiochiFactory
       @attempt_state = state
     end
 
+    def issue_failure_key(issue_number)
+      "issue-#{issue_number}"
+    end
+
+    def work_failure_key(work_item)
+      work_item.fetch("id", work_item.fetch("type"))
+    end
+
     def issue_number_from_branch(branch_name)
       branch_name[/\Aissue-(\d+)-/, 1]&.to_i
+    end
+
+    def factory_branch?(branch_name)
+      FACTORY_BRANCH_PREFIXES.any? { |prefix| branch_name.start_with?(prefix) }
     end
 
     def commit_if_needed(worktree_dir, message)
@@ -484,10 +590,12 @@ options = {
   max_run_attempts: Integer(ENV.fetch("YAMIOCHI_FACTORY_MAX_RUN_ATTEMPTS", "3")),
   poll_interval: Integer(ENV.fetch("YAMIOCHI_FACTORY_POLL_INTERVAL", "15")),
   workflow: ".fabro/workflows/implement-issue/workflow.toml",
+  promotion_workflow: ".fabro/workflows/promote-gate/workflow.toml",
   repair_workflow: ".fabro/workflows/repair-pr/workflow.toml",
   fabro_server: ENV["FABRO_SERVER"] || "http://127.0.0.1:32276",
   worktree_root: ENV["YAMIOCHI_FACTORY_WORKTREE_ROOT"] || "/tmp/yamiochi-factory-worktrees",
-  baseline_file: ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "/tmp/yamiochi-factory-baselines/merge-gates.json",
+  baseline_file: ENV["YAMIOCHI_FACTORY_GATE_STATE_FILE"] || ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "/tmp/yamiochi-factory-baselines/gates.json",
+  gate_registry_path: ENV["YAMIOCHI_FACTORY_GATE_REGISTRY"] || File.join(repo_root, "factory", "gates.yml"),
   attempts_file: ENV["YAMIOCHI_FACTORY_ATTEMPTS_FILE"] || "/tmp/yamiochi-factory-baselines/autopilot-attempts.json",
   failure_threshold: Integer(ENV.fetch("YAMIOCHI_FACTORY_FAILURE_THRESHOLD", "3")),
   failure_cooldown_seconds: Integer(ENV.fetch("YAMIOCHI_FACTORY_FAILURE_COOLDOWN_SECONDS", "3600"))
@@ -499,11 +607,14 @@ OptionParser.new do |parser|
   parser.on("--once", "Process only one issue") { options[:once] = true }
   parser.on("--max-issues N", Integer, "Process at most N issues") { |value| options[:max_issues] = value }
   parser.on("--cleanup-failed", "Remove failed worktrees too") { options[:cleanup_failed] = true }
-  parser.on("--workflow PATH", "Fabro workflow to run") { |value| options[:workflow] = value }
+  parser.on("--workflow PATH", "Fabro workflow to run for code changes") { |value| options[:workflow] = value }
+  parser.on("--promotion-workflow PATH", "Fabro workflow to run for gate promotions") { |value| options[:promotion_workflow] = value }
   parser.on("--repair-workflow PATH", "Fabro repair workflow to run") { |value| options[:repair_workflow] = value }
   parser.on("--fabro-server URL", "Fabro server URL") { |value| options[:fabro_server] = value }
   parser.on("--worktree-root PATH", "Directory for disposable worktrees") { |value| options[:worktree_root] = value }
-  parser.on("--baseline-file PATH", "Path to the persistent merge-gate baseline file") { |value| options[:baseline_file] = value }
+  parser.on("--baseline-file PATH", "Path to the persistent gate state file") { |value| options[:baseline_file] = value }
+  parser.on("--gate-state-file PATH", "Alias for --baseline-file") { |value| options[:baseline_file] = value }
+  parser.on("--gate-registry PATH", "Path to factory/gates.yml") { |value| options[:gate_registry_path] = value }
 end.parse!
 
 options[:once] = true if options[:max_issues] == 1

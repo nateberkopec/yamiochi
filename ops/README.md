@@ -1,6 +1,6 @@
 # Operations
 
-This repo currently assumes a **manually provisioned Hetzner EX63** (or similar) for the factory control plane.
+This repo currently assumes a **manually provisioned Hetzner EX63** (or similar) for the remote factory control plane.
 
 The current plan is:
 
@@ -14,14 +14,28 @@ The current plan is:
 - `ansible/` — host bootstrap + factory deployment
 - `fnox/` — local secret materialization from 1Password into a deploy-time env file
 
+## Current host shape
+
 The current deployment target is a **single EX63** that hosts:
 
 - Fabro control plane services
 - a locally-built Docker sandbox image for Fabro runs
-- a lightweight autopilot loop that selects work, creates disposable worktrees, opens PRs, watches CI, merges green diffs, and promotes merge-gate baselines
+- a lightweight autopilot loop that prefers open PRs, then gate-derived work packets, then gate promotions, and only then fallback issues
 - self-hosted GitHub Actions runners for the broader validation suite, including benchmarks on the heavy lane
+- persistent state under `/var/lib/yamiochi-factory/` for repo mirrors, disposable clones, run artifacts, and gate baselines/history
 - Tailscale + a private HTTPS UI on the host's MagicDNS name
 - a narrow public webhook ingress
+
+## Persistent state
+
+Important remote state paths:
+
+- `/var/lib/yamiochi-factory/repos/` — mirror and working copies
+- `/var/lib/yamiochi-factory/worktrees/` — disposable run clones
+- `/var/lib/yamiochi-factory/baselines/gates.json` — persistent gate baselines/history/promotion evidence
+- `/var/lib/yamiochi-factory/baselines/autopilot-attempts.json` — cooldown state for repeatedly failing work items
+
+The gate frontier itself stays in git at [`factory/gates.yml`](../factory/gates.yml); only the mutable result state lives off-repo.
 
 ## Secrets
 
@@ -42,4 +56,4 @@ The default deployment examples now assume:
 - provider: `openai`
 - model: `gpt-5.4`
 
-We can revisit OpenAI OAuth vs plain `OPENAI_API_KEY` once the host is up
+We can revisit OpenAI OAuth vs plain `OPENAI_API_KEY` once the host is up.

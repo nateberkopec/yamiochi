@@ -1,0 +1,16 @@
+digraph YamiochiPromoteGate {
+    graph [goal="Promote the gate frontier identified by $goal without weakening factory safety"]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    fetch_work_item [label="Fetch Promotion Goal", shape=parallelogram, script="mkdir -p tmp && ruby factory/scripts/fetch_work_item.rb '{{ goal }}' tmp/work-item.json", timeout=5m]
+    plan [label="Plan Promotion", prompt="Read @FACTORY.md, @factory/gates.yml, and @tmp/work-item.json. Write a narrow promotion plan to tmp/promotion-plan.md. Only change factory/gates.yml, only promote the named gate by one level, and do not weaken any scoring or safety rule.", timeout=15m]
+    implement [label="Implement Promotion", prompt="Read @tmp/promotion-plan.md and apply it. Only modify factory/gates.yml. Keep the diff limited to that file.", timeout=20m]
+    check_promotion [label="Check Promotion Safety", shape=parallelogram, script="ruby factory/scripts/check_gate_promotions.rb origin/main factory/gates.yml", timeout=2m, goal_gate=true]
+    deny_paths [label="Check Denied Paths", shape=parallelogram, script="ruby factory/scripts/check_denied_paths.rb", timeout=2m, goal_gate=true]
+    summarize [label="Summarize Promotion", shape=tab, prompt="Summarize the proposed promotion for the factory operator. Include the target gate, old and new levels, the evidence from tmp/work-item.json, and the validation result from the promotion safety checks."]
+
+    start -> fetch_work_item -> plan -> implement -> check_promotion -> deny_paths -> summarize -> exit
+}

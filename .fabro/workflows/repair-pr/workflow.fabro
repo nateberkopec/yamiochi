@@ -1,5 +1,5 @@
 digraph YamiochiRepairPullRequest {
-    graph [goal="Repair the open pull request identified by $goal until the merge gates are green again"]
+    graph [goal="Repair the open pull request identified by $goal until the relevant factory gates are green again"]
     rankdir=LR
 
     start [shape=Mdiamond, label="Start"]
@@ -7,14 +7,14 @@ digraph YamiochiRepairPullRequest {
 
     fetch_pr [label="Fetch Pull Request", shape=parallelogram, script="mkdir -p tmp/factory-gates && ruby factory/scripts/fetch_pull_request.rb {{ goal }} tmp/pull-request.json", timeout=5m]
     fetch_checks [label="Fetch CI Checks", shape=parallelogram, script="ruby factory/scripts/fetch_pr_checks.rb {{ goal }} tmp/factory-gates/pr-checks.json", timeout=5m]
-    plan [label="Plan Repair", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, @tmp/pull-request.json, and @tmp/factory-gates/pr-checks.json. Write a concrete repair plan to tmp/repair-plan.md focused on the failing checks while keeping the diff small and within allowed paths.", timeout=15m]
+    plan [label="Plan Repair", prompt="Read @SPEC.md, @FACTORY.md, @factory/gates.yml, @factory/judge.md, @tmp/pull-request.json, and @tmp/factory-gates/pr-checks.json. Write a concrete repair plan to tmp/repair-plan.md focused on the failing checks while keeping the diff small and within allowed paths.", timeout=15m]
     implement [label="Implement Repair", prompt="Read @tmp/repair-plan.md and update the current branch so the failing checks have the best current fix. Only modify allowed paths and add or adjust tests when practical.", timeout=45m]
     validate [label="Validate", shape=parallelogram, script="ruby factory/scripts/run_candidate_checks.rb tmp/factory-gates/validation.json", timeout=20m, goal_gate=true]
     deny_paths [label="Check Denied Paths", shape=parallelogram, script="ruby factory/scripts/check_denied_paths.rb", timeout=2m, goal_gate=true]
-    judge [label="Judge Review", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, @tmp/pull-request.json, @tmp/factory-gates/pr-checks.json, and @tmp/factory-gates/validation.json. Inspect the candidate diff against origin/main. Write the exact judge output format from factory/judge.md to tmp/judge.md and return the same text.", timeout=15m]
+    judge [label="Judge Review", prompt="Read @SPEC.md, @FACTORY.md, @factory/gates.yml, @factory/judge.md, @tmp/pull-request.json, @tmp/factory-gates/pr-checks.json, and @tmp/factory-gates/validation.json. Inspect the candidate diff against origin/main. Write the exact judge output format from factory/judge.md to tmp/judge.md and return the same text.", timeout=15m]
     judge_gate [label="Check Judge Score", shape=parallelogram, script="ruby factory/scripts/check_judge.rb tmp/judge.md", timeout=2m, goal_gate=true]
-    merge_gates [label="Check Merge Gates", shape=parallelogram, script="ruby factory/scripts/check_merge_gates.rb tmp/factory-gates/validation.json tmp/judge.md tmp/factory-gates/report.json", timeout=2m, goal_gate=true]
-    summarize [label="Summarize Outcome", shape=tab, prompt="Summarize the repair outcome for the factory operator. Include the PR addressed, failing checks seen in tmp/factory-gates/pr-checks.json, files changed, judge result, merge-gate result, and any remaining risks."]
+    evaluate_gates [label="Evaluate Gates", shape=parallelogram, script="ruby factory/scripts/evaluate_gates.rb tmp/factory-gates/validation.json tmp/judge.md tmp/factory-gates/report.json", timeout=2m, goal_gate=true]
+    summarize [label="Summarize Outcome", shape=tab, prompt="Summarize the repair outcome for the factory operator. Include the PR addressed, failing checks from tmp/factory-gates/pr-checks.json, files changed, judge result, gate report from tmp/factory-gates/report.json, and any remaining risks." ]
 
-    start -> fetch_pr -> fetch_checks -> plan -> implement -> validate -> deny_paths -> judge -> judge_gate -> merge_gates -> summarize -> exit
+    start -> fetch_pr -> fetch_checks -> plan -> implement -> validate -> deny_paths -> judge -> judge_gate -> evaluate_gates -> summarize -> exit
 }

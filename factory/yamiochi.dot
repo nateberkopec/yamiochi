@@ -1,32 +1,32 @@
 digraph YamiochiFactory {
     graph [
-        goal="Select, implement, validate, and merge the next Yamiochi improvement while ratcheting the gates in SPEC.md and FACTORY.md"
+        goal="Select, implement, validate, and merge the next Yamiochi improvement while advancing the current gate frontier"
     ]
     rankdir=LR
 
-    start         [shape=Mdiamond, label="Start"]
-    exit          [shape=Msquare, label="Exit"]
-    select_work   [label="Select Work", shape=component]
-    fetch_issue   [label="Fetch Issue", shape=parallelogram]
-    plan          [label="Plan"]
-    implement     [label="Implement"]
-    validate      [label="Lint + Unit + Scenarios + Bench", shape=parallelogram]
-    deny_paths    [label="Denied Paths", shape=parallelogram]
-    judge         [label="Judge Review"]
-    merge_gates   [label="Merge Gates", shape=diamond]
-    open_pr       [label="Push Branch + Open PR", shape=parallelogram]
-    watch_ci      [label="Watch CI", shape=diamond]
-    repair        [label="Repair PR"]
-    merge         [label="Merge PR", shape=parallelogram]
-    close_issue   [label="Close Issue + Promote Baseline", shape=parallelogram]
+    start            [shape=Mdiamond, label="Start"]
+    exit             [shape=Msquare, label="Exit"]
+    select_work      [label="Select Gate Work / Promotion / Fallback Issue", shape=component]
+    fetch_work_item  [label="Fetch Work Item", shape=parallelogram]
+    plan             [label="Plan"]
+    implement        [label="Implement"]
+    validate         [label="Lint + Unit + Scenarios + Bench", shape=parallelogram]
+    deny_paths       [label="Denied Paths", shape=parallelogram]
+    judge            [label="Judge Review"]
+    evaluate_gates   [label="Evaluate Gates", shape=diamond]
+    open_pr          [label="Push Branch + Open PR", shape=parallelogram]
+    watch_ci         [label="Watch CI", shape=diamond]
+    repair           [label="Repair PR"]
+    merge            [label="Merge PR", shape=parallelogram]
+    promote_baseline [label="Promote Baselines / Update Gate State", shape=parallelogram]
 
-    start -> select_work -> fetch_issue -> plan -> implement -> validate -> deny_paths -> judge -> merge_gates
-    merge_gates -> open_pr   [label="Pass"]
-    merge_gates -> implement [label="Revise"]
+    start -> select_work -> fetch_work_item -> plan -> implement -> validate -> deny_paths -> judge -> evaluate_gates
+    evaluate_gates -> open_pr   [label="Blocking gates pass"]
+    evaluate_gates -> implement [label="Revise"]
     open_pr -> watch_ci
     watch_ci -> merge  [label="Green"]
     watch_ci -> repair [label="Red"]
     repair -> validate
-    merge -> close_issue -> select_work
+    merge -> promote_baseline -> select_work
     select_work -> exit [label="No work"]
 }
