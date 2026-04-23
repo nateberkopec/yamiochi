@@ -5,8 +5,8 @@ digraph YamiochiRepairPullRequest {
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
 
-    fetch_pr [label="Fetch Pull Request", shape=parallelogram, script="mkdir -p tmp/factory-gates && ruby factory/scripts/fetch_pull_request.rb $goal tmp/pull-request.json", timeout=5m]
-    fetch_checks [label="Fetch CI Checks", shape=parallelogram, script="ruby factory/scripts/fetch_pr_checks.rb $goal tmp/factory-gates/pr-checks.json", timeout=5m]
+    fetch_pr [label="Fetch Pull Request", shape=parallelogram, script="mkdir -p tmp/factory-gates && ruby factory/scripts/fetch_pull_request.rb {{ goal }} tmp/pull-request.json", timeout=5m]
+    fetch_checks [label="Fetch CI Checks", shape=parallelogram, script="ruby factory/scripts/fetch_pr_checks.rb {{ goal }} tmp/factory-gates/pr-checks.json", timeout=5m]
     plan [label="Plan Repair", prompt="Read @SPEC.md, @FACTORY.md, @factory/judge.md, @tmp/pull-request.json, and @tmp/factory-gates/pr-checks.json. Write a concrete repair plan to tmp/repair-plan.md focused on the failing checks while keeping the diff small and within allowed paths.", timeout=15m]
     implement [label="Implement Repair", prompt="Read @tmp/repair-plan.md and update the current branch so the failing checks have the best current fix. Only modify allowed paths and add or adjust tests when practical.", timeout=45m]
     validate [label="Validate", shape=parallelogram, script="ruby factory/scripts/run_candidate_checks.rb tmp/factory-gates/validation.json", timeout=20m, goal_gate=true]
