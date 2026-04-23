@@ -8,6 +8,7 @@ require "optparse"
 require "shellwords"
 require "time"
 require_relative "lib/yamiochi_factory/github_client"
+require_relative "lib/yamiochi_factory/selection"
 
 module YamiochiFactory
   class Autopilot
@@ -17,8 +18,10 @@ module YamiochiFactory
       @github = GitHubClient.new
       @baseline_file = options.fetch(:baseline_file)
       @worktree_root = options.fetch(:worktree_root)
+      @attempts_file = options.fetch(:attempts_file)
       FileUtils.mkdir_p(@worktree_root)
       FileUtils.mkdir_p(File.dirname(@baseline_file))
+      FileUtils.mkdir_p(File.dirname(@attempts_file))
     end
 
     def run
@@ -30,7 +33,13 @@ module YamiochiFactory
         break unless issue
 
         completed += 1
-        process_issue(issue)
+        begin
+          process_issue(issue)
+          clear_issue_failure(issue.fetch("number"))
+        rescue StandardError => e
+          record_issue_failure(issue.fetch("number"), e)
+          warn e.full_message
+        end
         break if options.fetch(:once)
         break if options.fetch(:max_issues) && completed >= options.fetch(:max_issues)
       end
@@ -38,7 +47,7 @@ module YamiochiFactory
 
     private
 
-    attr_reader :repo_root, :options, :github, :baseline_file, :worktree_root
+    attr_reader :repo_root, :options, :github, :baseline_file, :worktree_root, :attempts_file
 
     def process_issue(issue)
       issue_number = issue.fetch("number")
@@ -59,10 +68,9 @@ module YamiochiFactory
     end
 
     def select_issue
-      stdout, = capture!(%w[ruby factory/scripts/select_work.rb], chdir: repo_root)
-      return nil if stdout.strip.empty?
-
-      JSON.parse(stdout)
+      issues = github.issues
+      available_issues = issues.reject { |issue| suppressed_issue?(issue.fetch("number")) }
+      Selection.select_issue(available_issues)
     end
 
     def stabilize_pull_request(run_id:, pull_request:, issue_number:)
@@ -259,6 +267,62 @@ module YamiochiFactory
       )
     end
 
+    def suppressed_issue?(issue_number)
+      cooldown_until = load_attempt_state.dig(issue_number.to_s, "cooldown_until")
+      return false if cooldown_until.to_s.empty?
+
+      Time.parse(cooldown_until) > Time.now.utc
+    rescue ArgumentError
+      false
+    end
+
+    def clear_issue_failure(issue_number)
+      state = load_attempt_state
+      return unless state.delete(issue_number.to_s)
+
+      save_attempt_state(state)
+    end
+
+    def record_issue_failure(issue_number, error)
+      state = load_attempt_state
+      issue_key = issue_number.to_s
+      record = state.fetch(issue_key, {})
+      failures = record.fetch("failures", 0) + 1
+      timestamp = Time.now.utc
+
+      updated_record = record.merge(
+        "failures" => failures,
+        "last_error" => error.message.lines.first.to_s.strip,
+        "updated_at" => timestamp.iso8601
+      )
+
+      if failures >= options.fetch(:failure_threshold)
+        updated_record["cooldown_until"] = (timestamp + options.fetch(:failure_cooldown_seconds)).iso8601
+      else
+        updated_record.delete("cooldown_until")
+      end
+
+      state[issue_key] = updated_record
+      save_attempt_state(state)
+    end
+
+    def load_attempt_state
+      @attempt_state ||= begin
+        if File.exist?(attempts_file)
+          JSON.parse(File.read(attempts_file))
+        else
+          {}
+        end
+      rescue JSON::ParserError
+        {}
+      end
+    end
+
+    def save_attempt_state(state)
+      File.write(attempts_file, JSON.pretty_generate(state))
+      @attempt_state = state
+    end
+
     def commit_if_needed(worktree_dir, message)
       stdout, = capture!(["git", "status", "--short"], chdir: worktree_dir)
       return if stdout.strip.empty?
@@ -327,7 +391,10 @@ options = {
   repair_workflow: ".fabro/workflows/repair-pr/workflow.toml",
   fabro_server: ENV["FABRO_SERVER"] || "http://127.0.0.1:32276",
   worktree_root: ENV["YAMIOCHI_FACTORY_WORKTREE_ROOT"] || "/tmp/yamiochi-factory-worktrees",
-  baseline_file: ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "/tmp/yamiochi-factory-baselines/merge-gates.json"
+  baseline_file: ENV["YAMIOCHI_FACTORY_BASELINE_FILE"] || "/tmp/yamiochi-factory-baselines/merge-gates.json",
+  attempts_file: ENV["YAMIOCHI_FACTORY_ATTEMPTS_FILE"] || "/tmp/yamiochi-factory-baselines/autopilot-attempts.json",
+  failure_threshold: Integer(ENV.fetch("YAMIOCHI_FACTORY_FAILURE_THRESHOLD", "3")),
+  failure_cooldown_seconds: Integer(ENV.fetch("YAMIOCHI_FACTORY_FAILURE_COOLDOWN_SECONDS", "3600"))
 }
 
 OptionParser.new do |parser|
