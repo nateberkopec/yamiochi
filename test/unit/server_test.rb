@@ -33,9 +33,12 @@ class YamiochiServerTest < Minitest::Test
     end
   end
 
-  def test_run_serves_one_http_response_and_exits
+  def test_run_streams_chunked_responses_when_content_length_is_unknown
+    body = rack_body("hello", " world")
+    app = ->(_env) { [200, {}, body] }
+
     response_text, server, thread, bound_port = run_server_request(
-      rackup_source: rackup_contents("hello world"),
+      app: app,
       request_text: basic_request("/")
     )
 
@@ -45,15 +48,18 @@ class YamiochiServerTest < Minitest::Test
 
     assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
     assert_equal "hello world", response_body(response_text)
+    assert_equal "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", wire_response_body(response_text)
 
     headers = response_headers(response_text)
     assert_equal "Yamiochi", headers.fetch("Server")
     assert_equal "close", headers.fetch("Connection")
-    assert_equal "11", headers.fetch("Content-Length")
+    refute headers.key?("Content-Length")
+    assert_equal "chunked", headers.fetch("Transfer-Encoding")
     assert headers.key?("Date"), "Expected response to include a Date header"
+    assert body.closed?, "Expected streamed response body to be closed after writing"
   end
 
-  def test_run_omits_wire_body_for_head_requests_but_preserves_content_length
+  def test_run_omits_wire_body_for_head_requests_but_preserves_chunked_framing_headers
     body = rack_body("hello", " world")
     app = ->(_env) { [200, {}, body] }
 
@@ -64,14 +70,39 @@ class YamiochiServerTest < Minitest::Test
 
     assert_server_thread_exits(thread, server)
     assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
-    assert_equal "", response_body(response_text)
+    assert_equal "", wire_response_body(response_text)
+
+    headers = response_headers(response_text)
+    assert_equal "Yamiochi", headers.fetch("Server")
+    assert_equal "close", headers.fetch("Connection")
+    refute headers.key?("Content-Length")
+    assert_equal "chunked", headers.fetch("Transfer-Encoding")
+    assert headers.key?("Date"), "Expected response to include a Date header"
+    assert_equal 0, body.each_calls, "Expected HEAD responses to avoid iterating the body"
+    assert body.closed?, "Expected response body to be closed after a HEAD response"
+  end
+
+  def test_run_preserves_explicit_content_length_when_present
+    body = rack_body("hello", " world")
+    app = ->(_env) { [200, { "Content-Length" => "11" }, body] }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "hello world", response_body(response_text)
+    assert_equal "hello world", wire_response_body(response_text)
 
     headers = response_headers(response_text)
     assert_equal "Yamiochi", headers.fetch("Server")
     assert_equal "close", headers.fetch("Connection")
     assert_equal "11", headers.fetch("Content-Length")
+    refute headers.key?("Transfer-Encoding")
     assert headers.key?("Date"), "Expected response to include a Date header"
-    assert body.closed?, "Expected response body to be closed after a HEAD response"
+    assert body.closed?, "Expected explicit-length body to be closed after writing"
   end
 
   def test_run_serves_a_directly_supplied_rack_app
@@ -238,7 +269,9 @@ class YamiochiServerTest < Minitest::Test
     Object.new.tap do |body|
       body.instance_variable_set(:@chunks, chunks)
       body.instance_variable_set(:@closed, false)
+      body.instance_variable_set(:@each_calls, 0)
       body.define_singleton_method(:each) do |&block|
+        @each_calls += 1
         @chunks.each(&block)
       end
       body.define_singleton_method(:close) do
@@ -246,6 +279,9 @@ class YamiochiServerTest < Minitest::Test
       end
       body.define_singleton_method(:closed?) do
         @closed
+      end
+      body.define_singleton_method(:each_calls) do
+        @each_calls
       end
     end
   end
@@ -331,8 +367,35 @@ class YamiochiServerTest < Minitest::Test
   end
 
   def response_body(response_text)
-    _head, body = response_text.split("\r\n\r\n", 2)
+    headers = response_headers(response_text)
+    body = wire_response_body(response_text)
+    return decode_chunked_body(body) if headers["Transfer-Encoding"] == "chunked"
+
     body
+  end
+
+  def wire_response_body(response_text)
+    _head, body = response_text.split("\r\n\r\n", 2)
+    body.to_s
+  end
+
+  def decode_chunked_body(body)
+    remaining = body.to_s.b
+    decoded = String.new.b
+
+    loop do
+      line_end = remaining.index("\r\n")
+      raise "Malformed chunked body: missing size delimiter" unless line_end
+
+      chunk_size = Integer(remaining.byteslice(0, line_end), 16)
+      remaining = remaining.byteslice(line_end + 2, remaining.bytesize).to_s
+      break if chunk_size.zero?
+
+      decoded << remaining.byteslice(0, chunk_size)
+      remaining = remaining.byteslice(chunk_size + 2, remaining.bytesize).to_s
+    end
+
+    decoded
   end
 
   def response_head(response_text)
