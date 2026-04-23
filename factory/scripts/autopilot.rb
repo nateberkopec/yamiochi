@@ -109,7 +109,7 @@ module YamiochiFactory
 
     def run_workflow(worktree_dir, workflow, goal)
       stdout, = capture!(
-        ["fabro", "run", workflow, "--goal", goal.to_s, "--auto-approve", "--json"],
+        ["fabro", "run", workflow, "--goal", goal.to_s, "--auto-approve", "--detach", "--json"],
         chdir: worktree_dir,
         env: fabro_env
       )
