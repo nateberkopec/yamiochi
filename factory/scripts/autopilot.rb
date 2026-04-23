@@ -86,24 +86,28 @@ module YamiochiFactory
 
     def create_mainline_worktree(issue)
       slug = issue.fetch("title").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
-      create_worktree(
+      create_clone(
         "issue-#{issue.fetch("number")}-#{slug}-#{Time.now.utc.strftime("%Y%m%d%H%M%S")}",
-        "origin/main"
+        branch_name: "main"
       )
     end
 
     def create_repair_worktree(pull_request_number, branch_name)
       slug = branch_name.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
-      create_worktree(
+      create_clone(
         "repair-pr-#{pull_request_number}-#{slug}-#{Time.now.utc.strftime("%Y%m%d%H%M%S")}",
-        "origin/#{branch_name}"
+        branch_name:
       )
     end
 
-    def create_worktree(name, ref)
+    def create_clone(name, branch_name:)
       worktree_dir = File.join(worktree_root, name)
-      capture!(%w[git fetch origin], chdir: repo_root)
-      capture!(["git", "worktree", "add", "--detach", worktree_dir, ref], chdir: repo_root)
+      remote_url = capture!(%w[git remote get-url origin], chdir: repo_root).first.strip
+      FileUtils.rm_rf(worktree_dir)
+      capture!(["git", "clone", "--quiet", repo_root, worktree_dir], chdir: repo_root)
+      capture!(["git", "remote", "set-url", "origin", remote_url], chdir: worktree_dir)
+      capture!(["git", "fetch", "origin", branch_name], chdir: worktree_dir)
+      capture!(["git", "checkout", "-B", branch_name, "origin/#{branch_name}"], chdir: worktree_dir)
       worktree_dir
     end
 
@@ -266,7 +270,7 @@ module YamiochiFactory
       return if worktree_dir.to_s.empty?
       return if keep && !options.fetch(:cleanup_failed)
 
-      capture!(["git", "worktree", "remove", "--force", worktree_dir], chdir: repo_root, allow_failure: true)
+      FileUtils.rm_rf(worktree_dir)
     end
 
     def retryable_run_error?(error)
