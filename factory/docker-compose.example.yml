@@ -47,7 +47,10 @@ services:
       GITHUB_REPOSITORY: nateberkopec/yamiochi
       YAMIOCHI_FACTORY_REPOSITORY: nateberkopec/yamiochi
       YAMIOCHI_FACTORY_BASELINE_FILE: /var/lib/yamiochi-factory/baselines/merge-gates.json
+      YAMIOCHI_FACTORY_ATTEMPTS_FILE: /var/lib/yamiochi-factory/baselines/autopilot-attempts.json
       YAMIOCHI_FACTORY_WORKTREE_ROOT: /var/lib/yamiochi-factory/worktrees
+      YAMIOCHI_FACTORY_FAILURE_THRESHOLD: "1"
+      YAMIOCHI_FACTORY_FAILURE_COOLDOWN_SECONDS: "900"
     command:
       - bash
       - -lc
