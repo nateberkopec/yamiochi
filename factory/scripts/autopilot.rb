@@ -42,9 +42,10 @@ module YamiochiFactory
 
     def process_issue(issue)
       issue_number = issue.fetch("number")
-      worktree_dir = create_mainline_worktree(issue)
+      worktree = create_mainline_worktree(issue)
+      worktree_dir = worktree.fetch(:dir)
       run_id = run_workflow_with_retries(worktree_dir, options.fetch(:workflow), issue_number)
-      run_branch = require_run_branch(run_id)
+      run_branch = recorded_run_branch(run_id) || worktree.fetch(:branch_name)
       pull_request = create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch)
 
       stabilize_pull_request(run_id:, pull_request:, issue_number:)
@@ -86,28 +87,36 @@ module YamiochiFactory
 
     def create_mainline_worktree(issue)
       slug = issue.fetch("title").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
-      create_clone(
-        "issue-#{issue.fetch("number")}-#{slug}-#{Time.now.utc.strftime("%Y%m%d%H%M%S")}",
-        branch_name: "main"
-      )
+      timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S")
+      branch_name = "issue-#{issue.fetch("number")}-#{slug}-#{timestamp}"
+
+      {
+        dir: create_clone(branch_name, branch_name:, start_point: "origin/main"),
+        branch_name:
+      }
     end
 
     def create_repair_worktree(pull_request_number, branch_name)
       slug = branch_name.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
-      create_clone(
-        "repair-pr-#{pull_request_number}-#{slug}-#{Time.now.utc.strftime("%Y%m%d%H%M%S")}",
+      timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S")
+      {
+        dir: create_clone(
+          "repair-pr-#{pull_request_number}-#{slug}-#{timestamp}",
+          branch_name:,
+          start_point: "origin/#{branch_name}"
+        ),
         branch_name:
-      )
+      }
     end
 
-    def create_clone(name, branch_name:)
+    def create_clone(name, branch_name:, start_point:)
       worktree_dir = File.join(worktree_root, name)
       remote_url = capture!(%w[git remote get-url origin], chdir: repo_root).first.strip
       FileUtils.rm_rf(worktree_dir)
       capture!(["git", "clone", "--quiet", repo_root, worktree_dir], chdir: repo_root)
       capture!(["git", "remote", "set-url", "origin", remote_url], chdir: worktree_dir)
-      capture!(["git", "fetch", "origin", branch_name], chdir: worktree_dir)
-      capture!(["git", "checkout", "-B", branch_name, "origin/#{branch_name}"], chdir: worktree_dir)
+      capture!(["git", "fetch", "--prune", "origin"], chdir: worktree_dir)
+      capture!(["git", "checkout", "-B", branch_name, start_point], chdir: worktree_dir)
       worktree_dir
     end
 
@@ -138,11 +147,8 @@ module YamiochiFactory
       run_id
     end
 
-    def require_run_branch(run_id)
-      run_branch = inspect_run(run_id).dig(0, "start_record", "run_branch")
-      raise "Fabro run #{run_id} did not record run_branch" if run_branch.to_s.empty?
-
-      run_branch
+    def recorded_run_branch(run_id)
+      inspect_run(run_id).dig(0, "start_record", "run_branch")
     end
 
     def inspect_run(run_id)
@@ -192,7 +198,8 @@ module YamiochiFactory
     def repair_pull_request(pull_request_number, attempt)
       pull_request = view_pull_request(pull_request_number.to_s)
       branch_name = pull_request.fetch("headRefName")
-      worktree_dir = create_repair_worktree(pull_request_number, branch_name)
+      worktree = create_repair_worktree(pull_request_number, branch_name)
+      worktree_dir = worktree.fetch(:dir)
       run_workflow_with_retries(worktree_dir, options.fetch(:repair_workflow), pull_request_number)
       commit_if_needed(worktree_dir, "Repair PR ##{pull_request_number} after CI failure (attempt #{attempt})")
       capture!(["git", "push", "origin", "HEAD:#{branch_name}"], chdir: worktree_dir)
