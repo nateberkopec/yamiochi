@@ -17,6 +17,7 @@ The current plan is:
 The current deployment target is a **single EX63** that hosts:
 
 - Fabro control plane services
+- a locally-built Docker sandbox image for Fabro runs
 - lightweight agent runners
 - self-hosted GitHub Actions runners for the broader validation suite, including benchmarks on the heavy lane
 - Tailscale + narrow public webhook ingress

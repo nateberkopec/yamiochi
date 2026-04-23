@@ -5,6 +5,7 @@
       - factory_runtime_env_local_path | length > 0
       - factory_fabro_image | length > 0
       - factory_sandbox_image | length > 0
+      - factory_sandbox_base_image | length > 0
       - factory_local_env.OPENAI_API_KEY is defined
       - factory_local_env.OPENAI_API_KEY | length > 0
       - factory_local_env.GITHUB_APP_CLIENT_SECRET is defined
@@ -15,21 +16,18 @@
       - factory_local_env.GITHUB_APP_PRIVATE_KEY | length > 0
     fail_msg: Fill in ops/ansible/group_vars/all.yml and the local fnox-backed env before deploying.
 
-- name: Create factory config directory
+- name: Create factory directories
   ansible.builtin.file:
-    path: "{{ factory_root }}/config"
+    path: "{{ item }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
-
-- name: Create Fabro storage directory
-  ansible.builtin.file:
-    path: "{{ factory_state_root }}/fabro-storage"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+  loop:
+    - "{{ factory_root }}/config"
+    - "{{ factory_root }}/sandbox-image"
+    - "{{ factory_state_root }}"
+    - "{{ factory_state_root }}/fabro-storage"
 
 - name: Render Fabro settings.toml
   ansible.builtin.template:
@@ -46,6 +44,20 @@
     owner: root
     group: root
     mode: "0600"
+
+- name: Render Fabro sandbox Dockerfile
+  ansible.builtin.template:
+    src: fabro-sandbox.Dockerfile.j2
+    dest: "{{ factory_root }}/sandbox-image/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Build Fabro sandbox image
+  ansible.builtin.command:
+    cmd: >-
+      docker build --pull --tag {{ factory_sandbox_image }} {{ factory_root }}/sandbox-image
+  changed_when: true
 
 - name: Render docker-compose.yml
   ansible.builtin.template:

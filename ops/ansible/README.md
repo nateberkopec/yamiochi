@@ -74,7 +74,7 @@ The current deployment shape assumes a single large EX63 host with three active 
 - `github-runner-fast` — self-hosted Actions lane for quick PR validation
 - `github-runner-heavy` — self-hosted Actions lane for heavier suites, including benchmark jobs
 
-Fabro itself is configured to execute runs in Docker sandboxes on the same host via `/var/run/docker.sock`, using a locally-built `yamiochi-fabro-sandbox:latest` image.
+Fabro itself is configured to execute runs in Docker sandboxes on the same host via `/var/run/docker.sock`, using a locally-built sandbox image (default tag: `fabro-agent:latest`). The deploy also runs the Fabro server container as `root` so it can talk to the host Docker socket and create sibling run sandboxes.
 
 Default sizing in `group_vars/all.example.yml`:
 
@@ -112,11 +112,12 @@ Installs/configures:
 ansible-playbook -i ops/ansible/inventory/hosts.yml ops/ansible/playbooks/deploy.yml
 ```
 
-Renders/copies:
+Renders/copies/builds:
 
 - `docker-compose.yml`
 - `config/settings.toml` for Fabro
 - `sandbox-image/Dockerfile` for the local Docker sandbox image
+- local sandbox image tag from `factory_sandbox_image` (default `fabro-agent:latest`)
 - `/opt/yamiochi-factory/.env.runtime`
 - `/opt/yamiochi-factory/.env.server`
 - compose wrapper script
