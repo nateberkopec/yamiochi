@@ -99,7 +99,6 @@ module YamiochiFactory
         .map do |pull_request|
           issue_number = issue_number_from_branch(pull_request.fetch("headRefName", ""))
           next unless issue_number
-          next if suppressed_issue?(issue_number)
 
           pull_request.merge("issue_number" => issue_number)
         end
