@@ -46,4 +46,33 @@ class YamiochiFactoryWorkPacketsTest < Minitest::Test
     assert_equal "internal_scenarios", packet.fetch("target_gate")
     assert_equal "ratchet_opportunity", packet.fetch("priority_reason")
   end
+
+  def test_select_best_skips_ratchet_gate_that_is_already_fully_passing
+    registry = YamiochiFactory::GateRegistry.load
+    state = YamiochiFactory::GateState.default_state(registry:)
+    state["gates"]["internal_scenarios"]["last_result"] = {
+      "candidate_value" => 1,
+      "baseline_value" => 1,
+      "threshold_value" => 1,
+      "full_pass_target" => 1,
+      "full_pass" => true,
+      "priority_reason" => nil,
+      "failure_summary" => nil,
+      "artifacts" => ["tmp/factory-gates/validation.json"]
+    }
+    state["gates"]["spec_definition_of_done"]["last_result"] = {
+      "candidate_value" => 0,
+      "baseline_value" => 0,
+      "threshold_value" => 0,
+      "full_pass_target" => 44,
+      "full_pass" => false,
+      "priority_reason" => "ratchet_opportunity",
+      "failure_summary" => "score 0, target 44",
+      "artifacts" => ["tmp/factory-gates/validation.json"]
+    }
+
+    packet = YamiochiFactory::WorkPackets.select_best(registry:, state:, state_path: "/tmp/gates.json")
+
+    assert_equal "spec_definition_of_done", packet.fetch("target_gate")
+  end
 end

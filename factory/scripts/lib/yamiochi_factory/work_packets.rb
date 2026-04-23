@@ -70,6 +70,7 @@ module YamiochiFactory
     private_class_method :default_snapshot
 
     def default_priority_reason(gate:, snapshot:, observed:)
+      return nil if observed && snapshot.fetch("full_pass", false)
       return "hard_fail" if observed && gate.fetch("level") == "hard" && !snapshot.fetch("full_pass", false)
       return "ratchet_regression" if observed && gate.fetch("level") == "ratchet" && snapshot.fetch("candidate_value").to_f < snapshot.fetch("threshold_value").to_f
       return "ratchet_opportunity" if gate.fetch("level") == "ratchet"
