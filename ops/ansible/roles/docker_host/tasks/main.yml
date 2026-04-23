@@ -1,14 +1,82 @@
 ---
-- name: Install Docker packages
+- name: Remove distro Docker packages that conflict with Docker CE
   ansible.builtin.apt:
     name:
       - docker.io
+      - docker-compose
+      - containerd
+      - runc
+    state: absent
+    purge: true
+    autoremove: true
+
+- name: Ensure apt keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Docker apt repository key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Install Docker packages
+  ansible.builtin.apt:
+    name:
+      - apparmor
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-ce
+      - docker-ce-cli
       - docker-compose-plugin
     state: present
     update_cache: true
+
+- name: Persist Docker-related kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/yamiochi-docker.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      overlay
+      br_netfilter
+      iptable_nat
+      nf_nat
+
+- name: Load Docker-related kernel modules
+  ansible.builtin.command: "modprobe {{ item }}"
+  loop:
+    - overlay
+    - br_netfilter
+    - iptable_nat
+    - nf_nat
+  changed_when: false
+
+- name: Use legacy iptables for Docker
+  ansible.builtin.command: "update-alternatives --set {{ item.name }} {{ item.path }}"
+  loop:
+    - { name: iptables, path: /usr/sbin/iptables-legacy }
+    - { name: ip6tables, path: /usr/sbin/ip6tables-legacy }
+  changed_when: false
 
 - name: Enable Docker service
   ansible.builtin.systemd:
     name: docker
     enabled: true
     state: started
+    daemon_reload: true

@@ -1,0 +1,12 @@
+# Human-owned factory and control-plane paths
+SPEC.md
+FACTORY.md
+ops/**
+factory/**
+.fabro/**
+test/scenarios/**
+.github/workflows/**
+mise.toml
+hk.pkl
+*.gemspec
+Gemfile

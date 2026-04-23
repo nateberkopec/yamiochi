@@ -1,0 +1,16 @@
+_version = 1
+
+[run.model]
+provider = "openai"
+name = "gpt-5.4"
+
+[run.sandbox]
+provider = "local"
+preserve = true
+
+[run.sandbox.local]
+worktree_mode = "always"
+
+[run.checkpoint]
+exclude_globs = ["tmp/**", "ops/ansible/.secrets/**"]
+

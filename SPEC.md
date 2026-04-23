@@ -165,7 +165,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 
 Yamiochi should be secure, in that there are no vulnerabilities in it which would require a patch-level release to fix and potentially a CVE.
 
-Yamiochi will be performant in terms of throughput and latency. It must process 400,000 hello world requests per second over 4 worker processes on our reference benchmark hardware.
+Yamiochi will be performant in terms of throughput and latency. It must process 300,000 hello world requests per second over 3 worker processes on 3 CPU on our reference benchmark hardware.
 
 Yamiochi must not implement or use any native language extensions. They are difficult to maintain from a security perspective.
 

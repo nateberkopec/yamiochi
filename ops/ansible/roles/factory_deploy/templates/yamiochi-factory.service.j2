@@ -1,18 +1,20 @@
 [Unit]
-Description=Yamiochi factory
-Requires=docker.service
-After=docker.service network-online.target
+Description=Yamiochi Fabro server
+After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
 WorkingDirectory={{ factory_root }}
-ExecStart=/usr/local/bin/yamiochi-factory-compose up
-ExecReload=/usr/local/bin/yamiochi-factory-compose restart
-ExecStop=/usr/local/bin/yamiochi-factory-compose down
+ExecStartPre=-/usr/bin/docker rm -f yamiochi-fabro
+ExecStartPre=/usr/bin/docker pull {{ factory_fabro_image }}
+ExecStart=/usr/bin/docker run --name yamiochi-fabro --rm --network host --env-file {{ factory_root }}/.env.runtime --env-file {{ factory_root }}/.env.server -v {{ factory_state_root }}/fabro-storage:/storage -v {{ factory_root }}/config:/config:ro -v /var/run/docker.sock:/var/run/docker.sock {{ factory_fabro_image }} sh -c 'exec fabro server start --foreground --bind 0.0.0.0:{{ factory_fabro.listen_port }} --config /config/settings.toml'
+ExecStop=/usr/bin/docker stop yamiochi-fabro
+Restart=always
+RestartSec=5
 TimeoutStartSec=300
-TimeoutStopSec=120
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

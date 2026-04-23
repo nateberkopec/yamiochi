@@ -18,7 +18,7 @@ The current deployment target is a **single EX63** that hosts:
 
 - Fabro control plane services
 - lightweight agent runners
-- self-hosted GitHub Actions runners for the broader validation suite
+- self-hosted GitHub Actions runners for the broader validation suite, including benchmarks on the heavy lane
 - Tailscale + narrow public webhook ingress
 
 ## Secrets
@@ -40,4 +40,4 @@ The default deployment examples now assume:
 - provider: `openai`
 - model: `gpt-5.4`
 
-We can revisit OpenAI OAuth vs plain `OPENAI_API_KEY` once the host is up, but the deployment scaffolding no longer assumes pi as the Fabro runtime.
+We can revisit OpenAI OAuth vs plain `OPENAI_API_KEY` once the host is up

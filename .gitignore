@@ -8,3 +8,4 @@ ops/fnox/fnox.toml
 # Temporary/runtime artifacts
 tmp/
 *.retry
+*.gem

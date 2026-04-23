@@ -1,0 +1,13 @@
+digraph YamiochiSmoke {
+    graph [goal="Smoke test the Yamiochi repository for Fabro readiness"]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    inspect   [label="Inspect Repo", shape=parallelogram, script="find . -maxdepth 3 -type f | sort | sed -n '1,200p'"]
+    validate  [label="Run Repo Checks", shape=parallelogram, script="mise run lint && mise run test && mise run scenarios && mise run build", timeout=20m, goal_gate=true]
+    summarize [label="Summarize", shape=tab, prompt="Review the repository listing and validation output. Summarize whether this repo is ready for Fabro automation and list the next missing pieces, if any."]
+
+    start -> inspect -> validate -> summarize -> exit
+}

@@ -9,16 +9,15 @@ This document describes the software factory that builds Yamiochi, the server sp
 
 ## 2. Components
 
-The factory is an always-on **remote** system. My local machine is only for editing `SPEC.md` / `FACTORY.md`, inspecting runs, and occasional smoke tests. The real fabro loop runs autonomously elsewhere.
+The factory is an always-on **remote** system. My local machine is only for editing human-owned control files such as `SPEC.md`, `FACTORY.md`, `AGENTS.md`, `.fabro/**`, `factory/**`, and `ops/**`, plus inspecting runs. Feature development and implementation work happen only on the remote Fabro host; this repository is not developed locally.
 
-The deployment model is a docker-compose-defined control plane plus one dedicated benchmark host.
+The deployment model is a docker-compose-defined single-host factory.
 
 - **[fabro](https://github.com/fabro-sh/fabro) control plane** — long-running remote workflow orchestrator. The loop below is a fabro DOT graph.
 - **Agent worker pool** — one or more ephemeral runner containers/VMs that execute coding sessions against fresh git worktrees.
 - **Judge / merge-gate runner** — computes judge satisfaction and merge-gate outcomes for a candidate diff.
 - **Scenario-gates runner** — executes internal and external scenario suites (§3) in isolation.
-- **Benchmark dispatcher** — asks the benchmark host to run §9 and records the result.
-- **Dedicated benchmark host** — runs benchmarks on our reference benchmark hardware for §9. It must not be colocated with fabro or agent workers.
+- **Heavy CI / benchmark lane** — heavyweight self-hosted runner capacity on the same host used for broader validation and benchmark jobs.
 - **State store** — durable state for fabro runs, baselines, PR metadata, retries, and queue bookkeeping.
 - **Artifact/log store** — persistent storage for worktrees, judge outputs, scenario logs, benchmark results, and release artifacts.
 - **mise** — tool and task runner. All factory-invokable tasks have a `mise run <task>` frontend.
@@ -33,12 +32,13 @@ The deployment model is a docker-compose-defined control plane plus one dedicate
 - `agent-runner` (scaled horizontally)
 - `judge`
 - `scenario-gates`
-- `benchmark-dispatcher`
+- `github-runner-fast`
+- `github-runner-heavy`
 - `postgres` (or equivalent durable state store)
 - `minio` / persistent artifact volume (or equivalent artifact store)
 - optionally `release-runner` behind a profile, since release staging is infrequent
 
-The dedicated benchmark runner is described alongside the control plane, but deployed separately on its own reference benchmark hardware.
+Benchmark jobs run on the heavyweight runner lane on the same host; they are not a separately deployed machine.
 
 ## 3. Scenario Gates
 
@@ -68,7 +68,9 @@ These execute in `sandbox-exec` as the `scenario-gates` node.
 
 ## 4. The Factory Loop
 
-The loop is defined in `factory/yamiochi.dot`.
+The human-owned factory blueprint is defined in `factory/yamiochi.dot`.
+
+Executable Fabro workflows live under `.fabro/workflows/` and should stay aligned with that blueprint.
 
 ## 5. What Agents Can Modify
 
@@ -82,6 +84,7 @@ The loop is defined in `factory/yamiochi.dot`.
 | `FACTORY.md` | no | Human |
 | `ops/**` | no | Human |
 | `factory/**` (fabro graph, judge prompts, scenario config) | no | Human |
+| `.fabro/**` (project and workflow definitions) | no | Human |
 | `.github/workflows/**`, `mise.toml`, `hk.pkl` | no | Human |
 | `*.gemspec`, `Gemfile` | proposes only, human-gated | Human |
 | Release signing key, RubyGems API key | no | Out of repo |
@@ -138,7 +141,7 @@ Day-one baselines are 0 (or whatever the first measurement produces), so the fir
 
 SPEC §12 defines the benchmark target. Throughput is a ratcheted gate (§8) with a 95% band for measurement noise: a merge must hit ≥ 95% of the last green baseline, and any improvement advances the baseline. The band is specific to benchmarks; scenario counts are deterministic and ratchet exactly.
 
-Benchmarks run on our reference benchmark hardware, triggered by the remote factory control plane. Results land in `factory/log/bench/`.
+Benchmarks run as heavyweight self-hosted runner jobs on the factory host. To keep numbers comparable, benchmark jobs should be serialized onto the heavy lane rather than run concurrently with other heavyweight jobs. Results land in `factory/log/bench/`.
 
 ## 10. Releases
 

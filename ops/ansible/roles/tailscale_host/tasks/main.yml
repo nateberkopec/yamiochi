@@ -29,10 +29,17 @@
   changed_when: false
   failed_when: false
 
+- name: Assert Tailscale auth key is available from local env
+  ansible.builtin.assert:
+    that:
+      - factory_local_env.TAILSCALE_AUTH_KEY is defined
+      - factory_local_env.TAILSCALE_AUTH_KEY | length > 0
+    fail_msg: Add TAILSCALE_AUTH_KEY to the locally materialized fnox env file.
+
 - name: Join tailnet
   ansible.builtin.command: >-
     tailscale up
-    --auth-key={{ factory_tailscale.auth_key }}
+    --auth-key={{ factory_local_env.TAILSCALE_AUTH_KEY }}
     --hostname={{ factory_tailscale.hostname }}
     {% if factory_tailscale.enable_ssh %}--ssh{% endif %}
   when: tailscale_ip.rc != 0

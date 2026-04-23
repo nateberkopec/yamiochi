@@ -1,65 +1,34 @@
-name: yamiochi-factory
+version: "3.9"
 
-# This is a deployment sketch for the remote/autonomous factory.
-# A practical single-host deployment may colocate the control plane,
-# lightweight agent runners, and self-hosted GitHub Actions runners.
-# The benchmark-runner profile is deployed separately on our reference benchmark hardware.
-
-x-runner-base: &runner-base
-  image: ghcr.io/example/yamiochi-factory-runner:latest
-  init: true
-  restart: unless-stopped
-  working_dir: /workspace/repo
-  environment:
-    REPO_URL: ${REPO_URL}
-    DATABASE_URL: postgres://factory:factory@postgres:5432/factory
-    ARTIFACTS_DIR: /artifacts
-    GITHUB_TOKEN: ${GITHUB_TOKEN}
-    MODEL_API_KEY: ${MODEL_API_KEY}
-  volumes:
-    - repo-cache:/workspace
-    - artifacts:/artifacts
+# This is a practical single-host Fabro deployment sketch for the remote,
+# autonomous Yamiochi factory.
+#
+# - Fabro itself is the control plane.
+# - Admin/API access stays on the private Tailscale interface.
+# - Public ingress is handled separately by Caddy and should expose only
+#   POST /api/v1/webhooks/github.
+# - Heavy benchmark work runs on the heavyweight self-hosted GitHub runner.
 
 services:
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: factory
-      POSTGRES_USER: factory
-      POSTGRES_PASSWORD: factory
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address :9001
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
-    volumes:
-      - minio-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-
   fabro:
-    <<: *runner-base
-    command: ["mise", "run", "factory:control-plane"]
-    depends_on:
-      - postgres
-      - minio
-
-  agent-runner:
-    <<: *runner-base
-    command: ["mise", "run", "factory:agent-worker"]
-    depends_on:
-      - postgres
-      - minio
-    # Keep these lightweight: authoring + fast local checks only.
-    # Scale horizontally, e.g.:
-    # docker compose up --scale agent-runner=3
+    image: ghcr.io/fabro-sh/fabro:nightly
+    user: "0:0"
+    restart: unless-stopped
+    env_file:
+      - .env.runtime
+      - .env.server
+    environment:
+      PORT: "32276"
+    command:
+      - sh
+      - -c
+      - exec fabro server start --foreground --bind 0.0.0.0:${PORT:-32276} --config /config/settings.toml
+    volumes:
+      - fabro-storage:/storage
+      - ./config:/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:32276:32276"
 
   github-runner-fast:
     image: ghcr.io/myoung34/docker-github-actions-runner:latest
@@ -95,53 +64,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - github-runner-heavy-data:/tmp/github-runner
 
-  judge:
-    <<: *runner-base
-    command: ["mise", "run", "factory:judge-worker"]
-    depends_on:
-      - postgres
-      - minio
-
-  scenario-gates:
-    <<: *runner-base
-    command: ["mise", "run", "factory:scenario-worker"]
-    depends_on:
-      - postgres
-      - minio
-
-  benchmark-dispatcher:
-    <<: *runner-base
-    command: ["mise", "run", "factory:benchmark-dispatcher"]
-    depends_on:
-      - postgres
-      - minio
-    environment:
-      REPO_URL: ${REPO_URL}
-      DATABASE_URL: postgres://factory:factory@postgres:5432/factory
-      ARTIFACTS_DIR: /artifacts
-      BENCHMARK_HOST: ${BENCHMARK_HOST}
-      BENCHMARK_SSH_USER: ${BENCHMARK_SSH_USER:-ec2-user}
-      BENCHMARK_SSH_KEY_PATH: ${BENCHMARK_SSH_KEY_PATH:-/run/secrets/benchmark_ssh_key}
-
-  release-runner:
-    <<: *runner-base
-    profiles: ["release"]
-    command: ["mise", "run", "factory:release-worker"]
-    depends_on:
-      - postgres
-      - minio
-
-  benchmark-runner:
-    <<: *runner-base
-    profiles: ["benchmark-host"]
-    command: ["mise", "run", "bench"]
-    # Deploy this profile only on our reference benchmark hardware.
-    # Do not run it on the same machine as fabro or the agent workers.
-
 volumes:
-  postgres-data:
-  minio-data:
-  repo-cache:
-  artifacts:
+  fabro-storage:
   github-runner-fast-data:
   github-runner-heavy-data:

@@ -3,6 +3,7 @@
   hosts: factory
   become: true
   roles:
+    - local_env
     - common
     - docker_host
     - tailscale_host

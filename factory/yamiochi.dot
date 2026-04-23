@@ -1,0 +1,28 @@
+digraph YamiochiFactory {
+    graph [
+        goal="Select, implement, validate, and merge the next Yamiochi improvement while ratcheting the gates in SPEC.md and FACTORY.md"
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    select_work [label="Select Work", shape=component]
+    plan        [label="Plan"]
+    implement   [label="Implement"]
+    lint        [label="Lint", shape=parallelogram]
+    unit_test   [label="Unit Tests", shape=parallelogram]
+    scenarios   [label="Scenario Gates", shape=parallelogram]
+    bench       [label="Benchmark Lane", shape=parallelogram]
+    deny_paths  [label="Denied Paths", shape=parallelogram]
+    judge       [label="Judge Review"]
+    merge_gate  [label="Merge Gate", shape=diamond]
+    merge       [label="Open PR / Merge"]
+
+    start -> select_work -> plan -> implement -> lint -> unit_test -> scenarios -> bench -> deny_paths -> judge -> merge_gate
+
+    merge_gate -> merge     [label="Pass", condition="outcome=success"]
+    merge_gate -> implement [label="Revise"]
+
+    merge -> exit
+}

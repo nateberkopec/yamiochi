@@ -1,0 +1,39 @@
+---
+- name: Check local runtime env file exists
+  ansible.builtin.stat:
+    path: "{{ factory_runtime_env_local_path }}"
+  register: factory_runtime_env_local
+  delegate_to: localhost
+  become: false
+
+- name: Assert local runtime env file exists
+  ansible.builtin.assert:
+    that:
+      - factory_runtime_env_local.stat.exists
+    fail_msg: >-
+      Materialize secrets locally first, e.g. `ops/fnox/materialize.fish`.
+
+- name: Parse local runtime env file
+  ansible.builtin.shell: |
+    python3 - <<'PY' "{{ factory_runtime_env_local_path }}"
+    import json
+    import sys
+    from pathlib import Path
+
+    values = {}
+    for line in Path(sys.argv[1]).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        values[key] = value
+    print(json.dumps(values))
+    PY
+  register: factory_runtime_env_parsed
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Set local runtime env fact
+  ansible.builtin.set_fact:
+    factory_local_env: "{{ factory_runtime_env_parsed.stdout | from_json }}"

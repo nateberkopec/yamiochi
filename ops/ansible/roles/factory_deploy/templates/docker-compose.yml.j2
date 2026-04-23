@@ -1,87 +1,6 @@
-name: {{ factory_compose_project_name }}
-
-x-runner-base: &runner-base
-  image: {{ factory_runner_image }}
-  init: true
-  restart: unless-stopped
-  working_dir: /workspace/repo
-  environment:
-    REPO_URL: ${REPO_URL}
-    REPO_REF: ${REPO_REF}
-    DATABASE_URL: postgres://{{ factory_postgres.user }}:{{ factory_postgres.password }}@postgres:5432/{{ factory_postgres.db }}
-    ARTIFACTS_DIR: /artifacts
-    GITHUB_TOKEN: ${GITHUB_TOKEN}
-    MODEL_PROVIDER: ${MODEL_PROVIDER}
-    MODEL_NAME: ${MODEL_NAME}
-    MODEL_API_KEY: ${MODEL_API_KEY}
-  volumes:
-    - workspace:/workspace
-    - artifacts:/artifacts
+version: "3.9"
 
 services:
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: {{ factory_postgres.db }}
-      POSTGRES_USER: {{ factory_postgres.user }}
-      POSTGRES_PASSWORD: {{ factory_postgres.password }}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    cpus: {{ factory_resources.postgres.cpus | to_json }}
-    mem_limit: {{ factory_resources.postgres.mem_limit }}
-
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address :9001
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    volumes:
-      - minio-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    cpus: {{ factory_resources.minio.cpus | to_json }}
-    mem_limit: {{ factory_resources.minio.mem_limit }}
-
-  fabro:
-    <<: *runner-base
-    command: ["mise", "run", "factory:control-plane"]
-    depends_on:
-      - postgres
-      - minio
-    environment:
-      REPO_URL: ${REPO_URL}
-      REPO_REF: ${REPO_REF}
-      DATABASE_URL: postgres://{{ factory_postgres.user }}:{{ factory_postgres.password }}@postgres:5432/{{ factory_postgres.db }}
-      ARTIFACTS_DIR: /artifacts
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      GITHUB_APP_ID: ${GITHUB_APP_ID}
-      GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID}
-      GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET}
-      GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET}
-      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
-      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG}
-      FABRO_DOMAIN: ${FABRO_DOMAIN}
-      MODEL_PROVIDER: ${MODEL_PROVIDER}
-      MODEL_NAME: ${MODEL_NAME}
-      MODEL_API_KEY: ${MODEL_API_KEY}
-    ports:
-      - "127.0.0.1:{{ factory_fabro.listen_port }}:{{ factory_fabro.listen_port }}"
-    cpus: {{ factory_resources.fabro.cpus | to_json }}
-    mem_limit: {{ factory_resources.fabro.mem_limit }}
-
-  agent-runner:
-    <<: *runner-base
-    command: ["mise", "run", "factory:agent-worker"]
-    depends_on:
-      - postgres
-      - minio
-    cpus: {{ factory_resources.agent_runner.cpus | to_json }}
-    mem_limit: {{ factory_resources.agent_runner.mem_limit }}
-
   github-runner-fast:
     image: {{ factory_github_runner_image }}
     restart: unless-stopped
@@ -98,6 +17,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - github-runner-fast-data:/tmp/github-runner
+    network_mode: host
     cpus: {{ factory_resources.github_runner_fast.cpus | to_json }}
     mem_limit: {{ factory_resources.github_runner_fast.mem_limit }}
 
@@ -117,48 +37,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - github-runner-heavy-data:/tmp/github-runner
+    network_mode: host
     cpus: {{ factory_resources.github_runner_heavy.cpus | to_json }}
     mem_limit: {{ factory_resources.github_runner_heavy.mem_limit }}
 
-  judge:
-    <<: *runner-base
-    command: ["mise", "run", "factory:judge-worker"]
-    depends_on:
-      - postgres
-      - minio
-    cpus: {{ factory_resources.judge.cpus | to_json }}
-    mem_limit: {{ factory_resources.judge.mem_limit }}
-
-  scenario-gates:
-    <<: *runner-base
-    command: ["mise", "run", "factory:scenario-worker"]
-    depends_on:
-      - postgres
-      - minio
-    cpus: {{ factory_resources.scenario_gates.cpus | to_json }}
-    mem_limit: {{ factory_resources.scenario_gates.mem_limit }}
-
-  benchmark-dispatcher:
-    <<: *runner-base
-    command: ["mise", "run", "factory:benchmark-dispatcher"]
-    depends_on:
-      - postgres
-      - minio
-    environment:
-      REPO_URL: ${REPO_URL}
-      REPO_REF: ${REPO_REF}
-      DATABASE_URL: postgres://{{ factory_postgres.user }}:{{ factory_postgres.password }}@postgres:5432/{{ factory_postgres.db }}
-      ARTIFACTS_DIR: /artifacts
-      BENCHMARK_HOST: ${BENCHMARK_HOST}
-      BENCHMARK_SSH_USER: ${BENCHMARK_SSH_USER}
-      BENCHMARK_SSH_KEY_PATH: ${BENCHMARK_SSH_KEY_PATH}
-    cpus: {{ factory_resources.benchmark_dispatcher.cpus | to_json }}
-    mem_limit: {{ factory_resources.benchmark_dispatcher.mem_limit }}
-
 volumes:
-  postgres-data:
-  minio-data:
-  workspace:
-  artifacts:
   github-runner-fast-data:
   github-runner-heavy-data:

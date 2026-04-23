@@ -1,0 +1,33 @@
+min_version = "2026.1.0"
+
+[tools]
+ruby = "3.3"
+hk = "1.39.0"
+
+[tasks.setup]
+description = "Install project git hooks"
+run = "hk install"
+
+[tasks.test]
+description = "Run the unit test suite"
+run = "ruby -S rake test"
+
+[tasks.lint]
+description = "Run fast syntax and repository lint checks"
+run = "ruby -S rake lint"
+
+[tasks.scenarios]
+description = "Run human-owned holdout scenarios"
+run = "ruby -S rake scenarios"
+
+[tasks.bench]
+description = "Run the benchmark frontend"
+run = "ruby -S rake bench"
+
+[tasks.build]
+description = "Build the gem artifact"
+run = "ruby -S rake build"
+
+[tasks.dev]
+description = "Explain the current development entrypoint status"
+run = "ruby -e 'warn %{Yamiochi does not have a runnable server entrypoint yet. Implement exe/yamiochi and update this task when ready.}'"

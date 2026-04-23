@@ -1,0 +1,41 @@
+_version = 1
+
+[server.listen]
+type = "tcp"
+address = "0.0.0.0:{{ factory_fabro.listen_port }}"
+
+[server.api]
+url = "https://{{ factory_public_ingress.domain }}"
+
+[server.web]
+enabled = true
+url = "http://{{ factory_web_origin }}"
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.integrations.github]
+strategy = "app"
+app_id = "{{ factory_github_app.app_id }}"
+client_id = "{{ factory_github_app.client_id }}"
+slug = "{{ factory_github_app.slug }}"
+
+[server.integrations.github.webhooks]
+strategy = "server_url"
+
+[server.scheduler]
+max_concurrent_runs = {{ factory_fabro.max_concurrent_runs }}
+
+[server.logging]
+level = "info"
+
+[run.model]
+provider = "{{ factory_model.provider }}"
+name = "{{ factory_model.name }}"
+
+[run.sandbox]
+provider = "local"
+
+[run.git.author]
+name = "yamiochi-factory"
+email = "yamiochi-factory@speedshop.co"

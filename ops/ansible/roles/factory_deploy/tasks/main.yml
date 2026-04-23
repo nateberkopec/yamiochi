@@ -2,24 +2,50 @@
 - name: Validate required variables
   ansible.builtin.assert:
     that:
-      - factory_repo_url | length > 0
-      - factory_runner_image | length > 0
       - factory_runtime_env_local_path | length > 0
-    fail_msg: Fill in ops/ansible/group_vars/all.yml before deploying.
+      - factory_fabro_image | length > 0
+      - factory_sandbox_image | length > 0
+      - factory_local_env.OPENAI_API_KEY is defined
+      - factory_local_env.OPENAI_API_KEY | length > 0
+      - factory_local_env.GITHUB_APP_CLIENT_SECRET is defined
+      - factory_local_env.GITHUB_APP_CLIENT_SECRET | length > 0
+      - factory_local_env.GITHUB_APP_WEBHOOK_SECRET is defined
+      - factory_local_env.GITHUB_APP_WEBHOOK_SECRET | length > 0
+      - factory_local_env.GITHUB_APP_PRIVATE_KEY is defined
+      - factory_local_env.GITHUB_APP_PRIVATE_KEY | length > 0
+    fail_msg: Fill in ops/ansible/group_vars/all.yml and the local fnox-backed env before deploying.
 
-- name: Check local runtime env file exists
-  ansible.builtin.stat:
-    path: "{{ factory_runtime_env_local_path }}"
-  register: factory_runtime_env_local
-  delegate_to: localhost
-  become: false
+- name: Create factory config directory
+  ansible.builtin.file:
+    path: "{{ factory_root }}/config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
-- name: Assert local runtime env file exists
-  ansible.builtin.assert:
-    that:
-      - factory_runtime_env_local.stat.exists
-    fail_msg: >-
-      Materialize secrets locally first, e.g. `cd ops/fnox && fnox export > ../ansible/.secrets/factory.env`.
+- name: Create Fabro storage directory
+  ansible.builtin.file:
+    path: "{{ factory_state_root }}/fabro-storage"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render Fabro settings.toml
+  ansible.builtin.template:
+    src: settings.toml.j2
+    dest: "{{ factory_root }}/config/settings.toml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render Fabro server env
+  ansible.builtin.template:
+    src: fabro-server.env.j2
+    dest: "{{ factory_root }}/.env.server"
+    owner: root
+    group: root
+    mode: "0600"
 
 - name: Render docker-compose.yml
   ansible.builtin.template:
@@ -53,7 +79,16 @@
     group: root
     mode: "0644"
 
-- name: Enable and start factory service
+- name: Start GitHub runner compose stack
+  ansible.builtin.command:
+    cmd: >-
+      docker compose --project-name {{ factory_compose_project_name }}
+      --env-file {{ factory_root }}/.env.runtime
+      up -d --remove-orphans
+    chdir: "{{ factory_root }}"
+  changed_when: true
+
+- name: Enable and start Fabro service
   ansible.builtin.systemd:
     name: yamiochi-factory.service
     enabled: true
