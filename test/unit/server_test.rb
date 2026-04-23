@@ -53,13 +53,52 @@ class YamiochiServerTest < Minitest::Test
     assert headers.key?("Date"), "Expected response to include a Date header"
   end
 
+  def test_run_serves_a_directly_supplied_rack_app
+    app = ->(_env) { [200, {}, ["direct app"]] }
+
+    response_text, server, thread, bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_nil server.rackup_path
+    assert_equal bound_port, server.bound_port
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "direct app", response_body(response_text)
+  end
+
+  def test_initialize_requires_exactly_one_app_source
+    error = assert_raises(ArgumentError) do
+      Yamiochi::Server.new(out: StringIO.new, err: StringIO.new)
+    end
+
+    assert_equal "Provide exactly one of rackup_path or app", error.message
+
+    Dir.mktmpdir("yamiochi-server-test") do |dir|
+      config_ru = File.join(dir, "config.ru")
+      File.write(config_ru, rackup_contents("ok"))
+
+      error = assert_raises(ArgumentError) do
+        Yamiochi::Server.new(
+          rackup_path: config_ru,
+          app: ->(_env) { [200, {}, ["ok"]] },
+          out: StringIO.new,
+          err: StringIO.new
+        )
+      end
+
+      assert_equal "Provide exactly one of rackup_path or app", error.message
+    end
+  end
+
   def test_run_passes_request_path_and_query_string_to_rack_app
     rackup_source = <<~'RUBY'
       run ->(env) { [200, {}, ["#{env.fetch("PATH_INFO")}?#{env.fetch("QUERY_STRING")}"]] }
     RUBY
 
     response_text, server, thread, _bound_port = run_server_request(
-      rackup_source:,
+      rackup_source: rackup_source,
       request_text: basic_request("/greetings/from/yamiochi?name=test")
     )
 
@@ -109,7 +148,7 @@ class YamiochiServerTest < Minitest::Test
     RUBY
 
     response_text, server, thread, _bound_port = run_server_request(
-      rackup_source:,
+      rackup_source: rackup_source,
       request_text: request_with_body("POST", "/submit", "hello world", "Content-Type" => "text/plain")
     )
 
@@ -127,7 +166,7 @@ class YamiochiServerTest < Minitest::Test
     RUBY
 
     response_text, server, thread, _bound_port = run_server_request(
-      rackup_source:,
+      rackup_source: rackup_source,
       request_text: request_with_body("POST", "/submit", "abc")
     )
 
@@ -141,7 +180,7 @@ class YamiochiServerTest < Minitest::Test
     RUBY
 
     response_text, server, thread, _bound_port = run_server_request(
-      rackup_source:,
+      rackup_source: rackup_source,
       request_text: "BREW /coffee HTTP/1.1\r\nHost: localhost\r\n\r\n"
     )
 
@@ -171,18 +210,28 @@ class YamiochiServerTest < Minitest::Test
     "#{method} #{target} HTTP/1.1\r\n#{header_lines.join("\r\n")}\r\n\r\n#{body}"
   end
 
-  def run_server_request(rackup_source:, request_text:)
+  def run_server_request(rackup_source: nil, app: nil, request_text:)
     Dir.mktmpdir("yamiochi-server-test") do |dir|
-      config_ru = File.join(dir, "config.ru")
-      File.write(config_ru, rackup_source)
+      server = if rackup_source
+        config_ru = File.join(dir, "config.ru")
+        File.write(config_ru, rackup_source)
 
-      server = Yamiochi::Server.new(
-        rackup_path: config_ru,
-        host: "127.0.0.1",
-        port: 0,
-        out: StringIO.new,
-        err: StringIO.new
-      )
+        Yamiochi::Server.new(
+          rackup_path: config_ru,
+          host: "127.0.0.1",
+          port: 0,
+          out: StringIO.new,
+          err: StringIO.new
+        )
+      else
+        Yamiochi::Server.new(
+          app: app,
+          host: "127.0.0.1",
+          port: 0,
+          out: StringIO.new,
+          err: StringIO.new
+        )
+      end
 
       thread = Thread.new do
         Thread.current.report_on_exception = false
@@ -197,7 +246,7 @@ class YamiochiServerTest < Minitest::Test
   end
 
   def assert_bad_request(request_text, rackup_source: rackup_contents("ok"))
-    response_text, server, thread, _bound_port = run_server_request(rackup_source:, request_text:)
+    response_text, server, thread, _bound_port = run_server_request(rackup_source: rackup_source, request_text: request_text)
 
     assert_server_thread_exits(thread, server)
     assert_equal "HTTP/1.1 400 Bad Request", response_status_line(response_text)

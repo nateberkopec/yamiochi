@@ -51,8 +51,10 @@ module Yamiochi
 
     attr_reader :rackup_path, :host, :port, :bound_port
 
-    def initialize(rackup_path:, host: DEFAULT_HOST, port: DEFAULT_PORT, out: $stdout, err: $stderr)
-      @rackup_path = File.expand_path(rackup_path.to_s)
+    def initialize(rackup_path: nil, app: nil, host: DEFAULT_HOST, port: DEFAULT_PORT, out: $stdout, err: $stderr)
+      validate_app_source!(rackup_path, app)
+      @rackup_path = rackup_path && File.expand_path(rackup_path.to_s)
+      @rack_app = app
       @host = host
       @port = Integer(port)
       @bound_port = nil
@@ -61,7 +63,6 @@ module Yamiochi
     end
 
     def run
-      validate_rackup_path!
       rack_app
       boot
       self
@@ -71,7 +72,15 @@ module Yamiochi
 
     attr_reader :out, :err
 
+    def validate_app_source!(rackup_path, app)
+      sources = [rackup_path, app].count { |source| !source.nil? }
+      return if sources == 1
+
+      raise ArgumentError, "Provide exactly one of rackup_path or app"
+    end
+
     def validate_rackup_path!
+      return unless rackup_path
       return if File.file?(rackup_path)
 
       raise ArgumentError, "Rackup file not found: #{rackup_path}"
@@ -321,7 +330,10 @@ module Yamiochi
     end
 
     def rack_app
-      @rack_app ||= RackupLoader.load(rackup_path)
+      @rack_app ||= begin
+        validate_rackup_path!
+        RackupLoader.load(rackup_path)
+      end
     end
 
     def write_simple_response(client, status)
