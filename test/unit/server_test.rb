@@ -89,6 +89,21 @@ class YamiochiServerTest < Minitest::Test
     assert_equal "direct app", response_body(response_text)
   end
 
+  def test_run_sets_rack_hijack_capability_flag_to_false
+    app = lambda { |env|
+      [200, {}, [env.fetch("rack.hijack?").to_s]]
+    }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "false", response_body(response_text)
+  end
+
   def test_initialize_requires_exactly_one_app_source
     error = assert_raises(ArgumentError) do
       Yamiochi::Server.new(out: StringIO.new, err: StringIO.new)

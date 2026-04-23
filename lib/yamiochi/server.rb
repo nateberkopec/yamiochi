@@ -171,7 +171,8 @@ module Yamiochi
         "rack.errors" => err,
         "rack.multithread" => false,
         "rack.multiprocess" => true,
-        "rack.run_once" => false
+        "rack.run_once" => false,
+        "rack.hijack?" => false
       }.merge(rack_headers(request.fetch(:headers)))
     end
 
