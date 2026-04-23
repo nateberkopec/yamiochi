@@ -43,7 +43,7 @@ module YamiochiFactory
     def process_issue(issue)
       issue_number = issue.fetch("number")
       worktree_dir = create_mainline_worktree(issue)
-      run_id = run_workflow(worktree_dir, options.fetch(:workflow), issue_number)
+      run_id = run_workflow_with_retries(worktree_dir, options.fetch(:workflow), issue_number)
       run_branch = require_run_branch(run_id)
       pull_request = create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch)
 
@@ -105,6 +105,20 @@ module YamiochiFactory
       capture!(%w[git fetch origin], chdir: repo_root)
       capture!(["git", "worktree", "add", "--detach", worktree_dir, ref], chdir: repo_root)
       worktree_dir
+    end
+
+    def run_workflow_with_retries(worktree_dir, workflow, goal)
+      attempts = 0
+
+      begin
+        attempts += 1
+        run_workflow(worktree_dir, workflow, goal)
+      rescue StandardError => e
+        raise unless retryable_run_error?(e) && attempts < options.fetch(:max_run_attempts)
+
+        sleep options.fetch(:poll_interval)
+        retry
+      end
     end
 
     def run_workflow(worktree_dir, workflow, goal)
@@ -175,7 +189,7 @@ module YamiochiFactory
       pull_request = view_pull_request(pull_request_number.to_s)
       branch_name = pull_request.fetch("headRefName")
       worktree_dir = create_repair_worktree(pull_request_number, branch_name)
-      run_workflow(worktree_dir, options.fetch(:repair_workflow), pull_request_number)
+      run_workflow_with_retries(worktree_dir, options.fetch(:repair_workflow), pull_request_number)
       commit_if_needed(worktree_dir, "Repair PR ##{pull_request_number} after CI failure (attempt #{attempt})")
       capture!(["git", "push", "origin", "HEAD:#{branch_name}"], chdir: worktree_dir)
     ensure
@@ -255,6 +269,14 @@ module YamiochiFactory
       capture!(["git", "worktree", "remove", "--force", worktree_dir], chdir: repo_root, allow_failure: true)
     end
 
+    def retryable_run_error?(error)
+      message = error.message
+      message.include?("signal: 9") ||
+        message.include?("Communication Error") ||
+        message.include?("error decoding response body") ||
+        message.include?("Worker exited before emitting a terminal run event")
+    end
+
     def fabro_env
       {
         "FABRO_SERVER" => options.fetch(:fabro_server),
@@ -288,6 +310,7 @@ options = {
   max_issues: nil,
   cleanup_failed: false,
   max_repairs: Integer(ENV.fetch("YAMIOCHI_FACTORY_MAX_REPAIRS", "3")),
+  max_run_attempts: Integer(ENV.fetch("YAMIOCHI_FACTORY_MAX_RUN_ATTEMPTS", "3")),
   poll_interval: Integer(ENV.fetch("YAMIOCHI_FACTORY_POLL_INTERVAL", "15")),
   workflow: ".fabro/workflows/implement-issue/workflow.toml",
   repair_workflow: ".fabro/workflows/repair-pr/workflow.toml",
