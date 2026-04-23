@@ -4,7 +4,7 @@ require_relative "../../test_helper"
 require_relative "../../../factory/scripts/lib/yamiochi_factory/selection"
 
 class YamiochiFactorySelectionTest < Minitest::Test
-  def test_select_issue_prefers_milestone_human_issue
+  def test_select_issue_prefers_lowest_milestone_human_issue
     issues = [
       issue(number: 20, milestone_title: nil, user_type: "User"),
       issue(number: 21, milestone_title: "M2: Two", user_type: "Bot"),
@@ -16,16 +16,17 @@ class YamiochiFactorySelectionTest < Minitest::Test
     assert_equal 22, selected.fetch("number")
   end
 
-  def test_select_issue_skips_blocked_and_pull_request_entries
+  def test_select_issue_skips_blocked_pull_request_and_non_factory_entries
     issues = [
       issue(number: 30, milestone_title: "M1: One", labels: ["blocked"]),
       issue(number: 31, milestone_title: "M1: One", pull_request: { "url" => "https://example.test" }),
-      issue(number: 32, milestone_title: nil)
+      issue(number: 32, milestone_title: nil),
+      issue(number: 33, milestone_title: "Backlog")
     ]
 
     selected = YamiochiFactory::Selection.select_issue(issues)
 
-    assert_equal 32, selected.fetch("number")
+    assert_nil selected
   end
 
   private

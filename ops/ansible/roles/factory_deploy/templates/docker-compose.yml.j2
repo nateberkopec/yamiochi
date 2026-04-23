@@ -4,6 +4,8 @@ services:
   factory-autopilot:
     image: {{ factory_sandbox_image }}
     restart: unless-stopped
+    env_file:
+      - {{ factory_root }}/.env.server
     environment:
       FABRO_SERVER: http://127.0.0.1:{{ factory_fabro.listen_port }}
       GITHUB_TOKEN: ${GITHUB_TOKEN}

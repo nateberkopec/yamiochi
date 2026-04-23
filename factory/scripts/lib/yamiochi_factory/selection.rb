@@ -8,6 +8,7 @@ module YamiochiFactory
       issues
         .reject { |issue| issue.key?("pull_request") }
         .reject { |issue| blocked?(issue) }
+        .select { |issue| factory_managed?(issue) }
         .min_by { |issue| priority_tuple(issue) }
     end
 
@@ -20,13 +21,15 @@ module YamiochiFactory
       labels.any? { |label| label == "blocked" || label == "factory:blocked" || label == "in-progress" }
     end
 
-    def milestone_priority(issue)
+    def factory_managed?(issue)
       milestone = issue["milestone"]
-      return [1, issue.fetch("number")] unless milestone
+      milestone && milestone.fetch("title", "").match?(/\AM\d+:/)
+    end
 
-      title = milestone.fetch("title", "")
+    def milestone_priority(issue)
+      title = issue.fetch("milestone").fetch("title", "")
       ordinal = title[/\AM(?<ordinal>\d+):/, :ordinal]&.to_i
-      [0, ordinal || 9_999]
+      [ordinal || 9_999, issue.fetch("number")]
     end
 
     def bot_priority(issue)

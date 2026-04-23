@@ -38,6 +38,8 @@ services:
     restart: unless-stopped
     depends_on:
       - fabro
+    env_file:
+      - .env.server
     environment:
       FABRO_SERVER: http://fabro:32276
       GITHUB_TOKEN: ${GITHUB_TOKEN}

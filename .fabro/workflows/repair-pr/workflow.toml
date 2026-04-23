@@ -2,3 +2,6 @@ _version = 1
 
 [workflow]
 graph = "workflow.fabro"
+
+[run.pull_request]
+enabled = false

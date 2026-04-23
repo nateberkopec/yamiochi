@@ -5,3 +5,6 @@ graph = "workflow.fabro"
 
 [run]
 goal = "Select the next Yamiochi issue"
+
+[run.pull_request]
+enabled = false
