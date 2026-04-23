@@ -15,7 +15,8 @@ RUN apt-get update \
       xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://mise.run | sh
+RUN curl -fsSL https://mise.run | sh \
+ && ln -sf /root/.local/bin/mise /usr/local/bin/mise
 ENV PATH="/root/.local/bin:${PATH}"
 
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

@@ -11,6 +11,12 @@ patterns = File.readlines(deny_list_path, chomp: true)
   .reject { |line| line.empty? || line.start_with?("#") }
 
 merge_base = `git merge-base HEAD #{Shellwords.escape(base_ref)} 2>/dev/null`.strip
+
+if merge_base.empty? && base_ref == "origin/main"
+  system("git fetch origin main >/dev/null 2>&1")
+  merge_base = `git merge-base HEAD #{Shellwords.escape(base_ref)} 2>/dev/null`.strip
+end
+
 abort("Could not determine merge base against #{base_ref}") if merge_base.empty?
 
 changed_files = `git diff --name-only #{merge_base}...HEAD`

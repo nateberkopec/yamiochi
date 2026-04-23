@@ -28,6 +28,7 @@
     - "{{ factory_root }}/sandbox-image"
     - "{{ factory_state_root }}"
     - "{{ factory_state_root }}/baselines"
+    - "{{ factory_state_root }}/fabro-home-remote"
     - "{{ factory_state_root }}/fabro-storage"
     - "{{ factory_state_root }}/repos"
     - "{{ factory_state_root }}/worktrees"
@@ -39,6 +40,14 @@
     version: "{{ factory_repo_ref }}"
     force: true
     update: true
+
+- name: Render Fabro CLI settings.toml
+  ansible.builtin.template:
+    src: fabro-cli-settings.toml.j2
+    dest: "{{ factory_state_root }}/fabro-home-remote/settings.toml"
+    owner: root
+    group: root
+    mode: "0600"
 
 - name: Render Fabro settings.toml
   ansible.builtin.template:

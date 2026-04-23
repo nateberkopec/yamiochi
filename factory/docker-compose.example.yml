@@ -59,6 +59,7 @@ services:
         done
     volumes:
       - /var/lib/yamiochi-factory:/var/lib/yamiochi-factory
+      - /var/lib/yamiochi-factory/fabro-home-remote:/root/.fabro
 
   github-runner-fast:
     image: ghcr.io/myoung34/docker-github-actions-runner:latest

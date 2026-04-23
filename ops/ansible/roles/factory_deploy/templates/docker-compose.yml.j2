@@ -25,6 +25,7 @@ services:
         done
     volumes:
       - {{ factory_state_root }}:{{ factory_state_root }}
+      - {{ factory_state_root }}/fabro-home-remote:/root/.fabro
     network_mode: host
     cpus: 1.0
     mem_limit: 2g
