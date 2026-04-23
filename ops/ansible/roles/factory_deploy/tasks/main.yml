@@ -92,7 +92,12 @@
 - name: Migrate legacy merge-gate baseline into gate state store
   ansible.builtin.command:
     cmd: >-
-      ruby {{ factory_repo_checkout_path }}/factory/scripts/migrate_gate_state.rb
+      docker run --rm
+      -v {{ factory_state_root }}:{{ factory_state_root }}
+      -v {{ factory_repo_checkout_path }}:{{ factory_repo_checkout_path }}
+      --workdir {{ factory_repo_checkout_path }}
+      {{ factory_sandbox_image }}
+      ruby factory/scripts/migrate_gate_state.rb
       {{ factory_state_root }}/baselines/merge-gates.json
       {{ factory_state_root }}/baselines/gates.json
       {{ factory_repo_checkout_path }}/factory/gates.yml
