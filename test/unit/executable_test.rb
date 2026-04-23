@@ -7,48 +7,49 @@ require "tmpdir"
 require_relative "../test_helper"
 
 class YamiochiExecutableTest < Minitest::Test
-  def test_executable_serves_one_http_response_and_exits_successfully
-    ensure_default_port_available
-
+  def test_executable_serves_one_http_response_and_exits_successfully_with_explicit_bind
     Dir.mktmpdir("yamiochi-exe-test") do |dir|
       config_ru = File.join(dir, "config.ru")
       File.write(config_ru, rackup_contents("hello from exe"))
 
-      stdout_text = nil
-      stderr_text = nil
-      status = nil
-      response_text = nil
+      with_available_tcp_port do |port|
+        bind_uri = "tcp://127.0.0.1:#{port}"
+        stdout_text = nil
+        stderr_text = nil
+        status = nil
+        response_text = nil
 
-      Open3.popen3(executable_path, config_ru, chdir: repo_root) do |stdin, stdout, stderr, wait_thr|
-        stdin.close
+        Open3.popen3(executable_path, "-b", bind_uri, config_ru, chdir: repo_root) do |stdin, stdout, stderr, wait_thr|
+          stdin.close
 
-        begin
-          response_text = connect_when_ready("127.0.0.1", Yamiochi::Server::DEFAULT_PORT, wait_thr) do |client|
-            client.write(basic_request("/"))
-            client.close_write
-            client.read
+          begin
+            response_text = connect_when_ready("127.0.0.1", port, wait_thr) do |client|
+              client.write(basic_request("/"))
+              client.close_write
+              client.read
+            end
+
+            status = wait_for_exit(wait_thr)
+          ensure
+            terminate_process(wait_thr) unless status
+            stdout_text = stdout.read
+            stderr_text = stderr.read
           end
-
-          status = wait_for_exit(wait_thr)
-        ensure
-          terminate_process(wait_thr) unless status
-          stdout_text = stdout.read
-          stderr_text = stderr.read
         end
+
+        assert status.success?, "Expected executable to exit successfully, stdout: #{stdout_text.inspect}, stderr: #{stderr_text.inspect}"
+        assert_empty stdout_text
+        assert_empty stderr_text
+        assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+        assert_equal "hello from exe", response_body(response_text)
+
+        headers = response_headers(response_text)
+        assert_equal "Yamiochi", headers.fetch("Server")
+        assert_equal "close", headers.fetch("Connection")
+        refute headers.key?("Content-Length")
+        assert_equal "chunked", headers.fetch("Transfer-Encoding")
+        assert headers.key?("Date"), "Expected response to include a Date header"
       end
-
-      assert status.success?, "Expected executable to exit successfully, stdout: #{stdout_text.inspect}, stderr: #{stderr_text.inspect}"
-      assert_empty stdout_text
-      assert_empty stderr_text
-      assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
-      assert_equal "hello from exe", response_body(response_text)
-
-      headers = response_headers(response_text)
-      assert_equal "Yamiochi", headers.fetch("Server")
-      assert_equal "close", headers.fetch("Connection")
-      refute headers.key?("Content-Length")
-      assert_equal "chunked", headers.fetch("Transfer-Encoding")
-      assert headers.key?("Date"), "Expected response to include a Date header"
     end
   end
 
@@ -118,11 +119,11 @@ class YamiochiExecutableTest < Minitest::Test
     File.join(repo_root, "exe", "yamiochi")
   end
 
-  def ensure_default_port_available
-    probe = TCPServer.new("127.0.0.1", Yamiochi::Server::DEFAULT_PORT)
+  def with_available_tcp_port(host = "127.0.0.1")
+    probe = TCPServer.new(host, 0)
+    port = probe.local_address.ip_port
     probe.close
-  rescue Errno::EADDRINUSE
-    skip "127.0.0.1:#{Yamiochi::Server::DEFAULT_PORT} is unavailable for executable test"
+    yield port
   end
 
   def connect_when_ready(host, port, wait_thr, timeout: 5)
