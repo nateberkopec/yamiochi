@@ -1,0 +1,7 @@
+ruby_version: 3.3
+
+plugins:
+  - standard-custom
+
+extend_config:
+  - config/standard/custom_cops.yml

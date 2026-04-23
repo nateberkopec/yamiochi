@@ -139,10 +139,7 @@ module YamiochiFactory
     end
 
     def rack_env_checkbox?(checkbox_text)
-      checkbox_text.start_with?("All required Rack 3 environment keys") ||
-        checkbox_text.start_with?("`rack.input`") ||
-        checkbox_text.start_with?("`rack.multithread`") ||
-        checkbox_text.start_with?("`rack.multiprocess`")
+      checkbox_text.start_with?("All required Rack 3 environment keys", "`rack.input`", "`rack.multithread`", "`rack.multiprocess`")
     end
   end
 end

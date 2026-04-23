@@ -2,16 +2,6 @@
 
 require "rake"
 require "rake/testtask"
-require "rbconfig"
-require "shellwords"
-
-ruby_files = FileList[
-  "Rakefile",
-  "lib/**/*.rb",
-  "exe/**/*.rb",
-  "test/**/*.rb",
-  "factory/scripts/**/*.rb"
-].existing.reject { |path| File.directory?(path) }
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
@@ -25,11 +15,9 @@ Rake::TestTask.new(:scenarios) do |t|
   t.warning = true
 end
 
-desc "Run Ruby syntax checks"
+desc "Run standardrb with project custom cops"
 task :lint do
-  abort "No Ruby files found to lint" if ruby_files.empty?
-
-  sh [RbConfig.ruby, "-cw", *ruby_files].shelljoin
+  sh "bundle exec standardrb"
 end
 
 desc "Build the gem"

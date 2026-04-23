@@ -10,7 +10,7 @@ class YamiochiFactoryGatePromotionTest < Minitest::Test
     registry = YamiochiFactory::GateRegistry.load
     state = YamiochiFactory::GateState.default_state(registry:)
     state["gates"]["internal_scenarios"]["full_pass_streak"] = 3
-    state["gates"]["internal_scenarios"]["last_result"] = { "full_pass" => true }
+    state["gates"]["internal_scenarios"]["last_result"] = {"full_pass" => true}
 
     proposals = YamiochiFactory::GatePromotion.eligible_promotions(registry:, state:)
 
@@ -25,7 +25,7 @@ class YamiochiFactoryGatePromotionTest < Minitest::Test
     candidate_registry.gates["sinatra_fixture"]["level"] = "ratchet"
     state = YamiochiFactory::GateState.default_state(registry: candidate_registry)
     state["gates"]["sinatra_fixture"]["full_pass_streak"] = 3
-    state["gates"]["sinatra_fixture"]["last_result"] = { "full_pass" => true }
+    state["gates"]["sinatra_fixture"]["last_result"] = {"full_pass" => true}
 
     result = YamiochiFactory::GatePromotion.validate_transition(base_registry:, candidate_registry:, state:)
 
@@ -40,7 +40,7 @@ class YamiochiFactoryGatePromotionTest < Minitest::Test
     candidate_registry.gates["sinatra_fixture"]["level"] = "ratchet"
     state = YamiochiFactory::GateState.default_state(registry: candidate_registry)
     state["gates"]["sinatra_fixture"]["full_pass_streak"] = 3
-    state["gates"]["sinatra_fixture"]["last_result"] = { "full_pass" => true }
+    state["gates"]["sinatra_fixture"]["last_result"] = {"full_pass" => true}
 
     result = YamiochiFactory::GatePromotion.validate_transition(base_registry:, candidate_registry:, state:)
 

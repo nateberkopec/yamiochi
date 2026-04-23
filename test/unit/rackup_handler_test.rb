@@ -19,16 +19,23 @@ class YamiochiRackupHandlerTest < Minitest::Test
 
       server_instance.define_singleton_method(:run) { self }
 
-      Yamiochi::Server.stub(:new, ->(**kwargs) {
-        calls << kwargs
-        server_instance
-      }) do
+      server_singleton = Yamiochi::Server.singleton_class
+      original_new = Yamiochi::Server.method(:new)
+
+      begin
+        server_singleton.send(:define_method, :new) do |**kwargs|
+          calls << kwargs
+          server_instance
+        end
+
         result = Rackup::Handler::Yamiochi.run(app, Host: "127.0.0.1", Port: "9393")
 
         assert_same server_instance, result
+      ensure
+        server_singleton.send(:define_method, :new, original_new)
       end
 
-      assert_equal [{ app: app, host: "127.0.0.1", port: "9393" }], calls
+      assert_equal [{app: app, host: "127.0.0.1", port: "9393"}], calls
     end
   end
 

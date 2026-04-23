@@ -22,8 +22,7 @@ module YamiochiFactory
     end
 
     def factory_managed?(issue)
-      milestone = issue["milestone"]
-      milestone && milestone.fetch("title", "").match?(/\AM\d+:/)
+      issue["milestone"]&.fetch("title", "")&.match?(/\AM\d+:/)
     end
 
     def milestone_priority(issue)

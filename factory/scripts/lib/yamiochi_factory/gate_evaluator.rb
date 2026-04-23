@@ -86,7 +86,7 @@ module YamiochiFactory
       when "judge"
         judge.fetch("decision") == "pass" && judge.fetch("score").to_f >= 0.8
       else
-        raise ArgumentError, "Unsupported gate source #{source.fetch('kind').inspect}"
+        raise ArgumentError, "Unsupported gate source #{source.fetch("kind").inspect}"
       end
     end
     private_class_method :candidate_value_for
@@ -119,7 +119,7 @@ module YamiochiFactory
       return true if gate.fetch("metric_type") == "binary" && gate.fetch("full_pass", {}).empty?
 
       full_pass = gate.fetch("full_pass", {})
-      case full_pass.fetch("kind", gate.fetch("metric_type") == "binary" ? "literal" : "none")
+      case full_pass.fetch("kind", (gate.fetch("metric_type") == "binary") ? "literal" : "none")
       when "literal"
         full_pass["value"]
       when "metadata"
@@ -127,8 +127,6 @@ module YamiochiFactory
       when "judge_threshold"
         judge.fetch("score")
       when "none"
-        nil
-      else
         nil
       end
     end
@@ -189,11 +187,11 @@ module YamiochiFactory
       case source.fetch("kind")
       when "command"
         command = validation.dig("commands", source.fetch("name")) || {}
-        first_line(command["stderr"]) || first_line(command["stdout"]) || "#{gate.fetch('title')} did not pass"
+        first_line(command["stderr"]) || first_line(command["stdout"]) || "#{gate.fetch("title")} did not pass"
       when "judge"
-        "Judge score #{judge.fetch('score')} with decision #{judge.fetch('decision')}"
+        "Judge score #{judge.fetch("score")} with decision #{judge.fetch("decision")}"
       when "validation"
-        candidate_value ? nil : "Validation key #{source.fetch('key')} was false"
+        candidate_value ? nil : "Validation key #{source.fetch("key")} was false"
       when "score"
         parts = ["score #{candidate_value}"]
         parts << "baseline #{baseline_value}" if gate.fetch("level") == "ratchet"

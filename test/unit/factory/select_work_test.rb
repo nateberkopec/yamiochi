@@ -19,7 +19,7 @@ class YamiochiFactorySelectionTest < Minitest::Test
   def test_select_issue_skips_blocked_pull_request_and_non_factory_entries
     issues = [
       issue(number: 30, milestone_title: "M1: One", labels: ["blocked"]),
-      issue(number: 31, milestone_title: "M1: One", pull_request: { "url" => "https://example.test" }),
+      issue(number: 31, milestone_title: "M1: One", pull_request: {"url" => "https://example.test"}),
       issue(number: 32, milestone_title: nil),
       issue(number: 33, milestone_title: "Backlog")
     ]
@@ -35,10 +35,10 @@ class YamiochiFactorySelectionTest < Minitest::Test
     payload = {
       "number" => number,
       "title" => "Issue #{number}",
-      "labels" => labels.map { |name| { "name" => name } },
-      "user" => { "login" => "nateberkopec", "type" => user_type }
+      "labels" => labels.map { |name| {"name" => name} },
+      "user" => {"login" => "nateberkopec", "type" => user_type}
     }
-    payload["milestone"] = milestone_title ? { "title" => milestone_title } : nil
+    payload["milestone"] = milestone_title ? {"title" => milestone_title} : nil
     payload["pull_request"] = pull_request if pull_request
     payload
   end

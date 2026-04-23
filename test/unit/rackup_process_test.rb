@@ -57,10 +57,10 @@ class YamiochiRackupProcessTest < Minitest::Test
   private
 
   def skip_unless_rackup_available
-    return if system(RbConfig.ruby, "-S", "rackup", "--version", out: File::NULL, err: File::NULL)
+    return if File.exist?(rackup_executable)
 
     skip "rackup executable is unavailable in the test environment"
-  rescue Errno::ENOENT
+  rescue Gem::GemNotFoundException
     skip "rackup executable is unavailable in the test environment"
   end
 
@@ -68,8 +68,7 @@ class YamiochiRackupProcessTest < Minitest::Test
     [
       RbConfig.ruby,
       "-Ilib",
-      "-S",
-      "rackup",
+      rackup_executable,
       "-q",
       "-E",
       "none",
@@ -81,6 +80,10 @@ class YamiochiRackupProcessTest < Minitest::Test
       port.to_s,
       config_ru
     ]
+  end
+
+  def rackup_executable
+    Gem.bin_path("rackup", "rackup")
   end
 
   def rackup_contents(body)
@@ -117,7 +120,7 @@ class YamiochiRackupProcessTest < Minitest::Test
 
   def decode_chunked_body(body)
     remaining = body.to_s.b
-    decoded = String.new.b
+    decoded = +"".b
 
     loop do
       line_end = remaining.index("\r\n")
@@ -165,7 +168,7 @@ class YamiochiRackupProcessTest < Minitest::Test
 
       break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
-      sleep 0.01
+      IO.select(nil, nil, nil, 0.01)
     end
 
     flunk "Timed out waiting for rackup to accept a client connection"

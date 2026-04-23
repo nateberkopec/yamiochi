@@ -99,7 +99,7 @@ module Yamiochi
       end
 
       if argv.length > 1
-        err.puts "unexpected arguments: #{argv[1..].join(' ')}"
+        err.puts "unexpected arguments: #{argv[1..].join(" ")}"
         err.puts USAGE
         return
       end

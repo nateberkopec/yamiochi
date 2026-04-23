@@ -34,7 +34,7 @@ else
   issue = YamiochiFactory::Selection.select_issue(YamiochiFactory::GitHubClient.new.issues)
   issue&.merge(
     "type" => "issue",
-    "id" => "issue-#{issue.fetch('number')}",
+    "id" => "issue-#{issue.fetch("number")}",
     "selection_reason" => {
       "source" => "issue_fallback",
       "milestone_priority" => YamiochiFactory::Selection.milestone_priority(issue),

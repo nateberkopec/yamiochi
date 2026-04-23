@@ -70,7 +70,7 @@ module YamiochiFactory
     end
 
     def default_baseline_value(gate)
-      gate.fetch("metric_type") == "score" ? 0 : nil
+      (gate.fetch("metric_type") == "score") ? 0 : nil
     end
 
     def default_gate_state(gate)

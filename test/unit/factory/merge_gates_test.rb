@@ -8,9 +8,9 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
   def test_evaluate_applies_observe_ratchet_and_hard_semantics
     validation = {
       "commands" => {
-        "lint" => { "success" => true },
-        "test" => { "success" => true },
-        "scenarios" => { "success" => true }
+        "lint" => {"success" => true},
+        "test" => {"success" => true},
+        "scenarios" => {"success" => true}
       },
       "deny_paths_passed" => true,
       "scores" => {
@@ -28,7 +28,7 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
         "spec_definition_of_done" => 4
       }
     }
-    judge = { "score" => 0.9, "decision" => "pass" }
+    judge = {"score" => 0.9, "decision" => "pass"}
     registry = YamiochiFactory::GateRegistry.load
     baseline = YamiochiFactory::MergeGates.default_baseline(registry:)
     baseline["gates"]["internal_scenarios"]["baseline_value"] = 2
@@ -49,9 +49,9 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
   def test_evaluate_fails_when_hard_gate_or_ratchet_regresses
     validation = {
       "commands" => {
-        "lint" => { "success" => false },
-        "test" => { "success" => true },
-        "scenarios" => { "success" => true }
+        "lint" => {"success" => false},
+        "test" => {"success" => true},
+        "scenarios" => {"success" => true}
       },
       "deny_paths_passed" => true,
       "scores" => {
@@ -69,7 +69,7 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
         "spec_definition_of_done" => 4
       }
     }
-    judge = { "score" => 0.5, "decision" => "revise" }
+    judge = {"score" => 0.5, "decision" => "revise"}
     registry = YamiochiFactory::GateRegistry.load
     baseline = YamiochiFactory::MergeGates.default_baseline(registry:)
     baseline["gates"]["internal_scenarios"]["baseline_value"] = 2
@@ -89,9 +89,9 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
   def test_promote_updates_ratchet_baselines_and_streaks
     validation = {
       "commands" => {
-        "lint" => { "success" => true },
-        "test" => { "success" => true },
-        "scenarios" => { "success" => true }
+        "lint" => {"success" => true},
+        "test" => {"success" => true},
+        "scenarios" => {"success" => true}
       },
       "deny_paths_passed" => true,
       "scores" => {
@@ -109,7 +109,7 @@ class YamiochiFactoryMergeGatesTest < Minitest::Test
         "spec_definition_of_done" => 4
       }
     }
-    judge = { "score" => 0.9, "decision" => "pass" }
+    judge = {"score" => 0.9, "decision" => "pass"}
     registry = YamiochiFactory::GateRegistry.load
     baseline = YamiochiFactory::MergeGates.default_baseline(registry:)
     report = YamiochiFactory::MergeGates.evaluate(validation:, judge:, baseline:, registry:)
