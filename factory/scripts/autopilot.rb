@@ -22,6 +22,7 @@ module YamiochiFactory
       FileUtils.mkdir_p(@worktree_root)
       FileUtils.mkdir_p(File.dirname(@baseline_file))
       FileUtils.mkdir_p(File.dirname(@attempts_file))
+      ensure_git_push_auth!
     end
 
     def run
@@ -54,8 +55,15 @@ module YamiochiFactory
       worktree = create_mainline_worktree(issue)
       worktree_dir = worktree.fetch(:dir)
       run_id = run_workflow_with_retries(worktree_dir, options.fetch(:workflow), issue_number)
-      run_branch = recorded_run_branch(run_id) || worktree.fetch(:branch_name)
-      pull_request = create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch)
+      fabro_run_branch = recorded_run_branch(run_id)
+      run_branch = fabro_run_branch || worktree.fetch(:branch_name)
+      pull_request = create_or_fetch_pull_request(
+        run_id,
+        issue,
+        worktree_dir,
+        run_branch,
+        fabro_run_branch:
+      )
 
       stabilize_pull_request(run_id:, pull_request:, issue_number:)
       promote_baseline(worktree_dir)
@@ -163,7 +171,9 @@ module YamiochiFactory
       JSON.parse(capture!(["fabro", "inspect", run_id, "--json"], chdir: repo_root, env: fabro_env).first)
     end
 
-    def create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch)
+    def create_or_fetch_pull_request(run_id, issue, worktree_dir, run_branch, fabro_run_branch: nil)
+      return manual_create_pull_request(issue, worktree_dir, run_branch) if fabro_run_branch.to_s.empty?
+
       create_pull_request(run_id)
       pull_request_record(run_id)
     rescue StandardError
@@ -350,6 +360,12 @@ module YamiochiFactory
         message.include?("Communication Error") ||
         message.include?("error decoding response body") ||
         message.include?("Worker exited before emitting a terminal run event")
+    end
+
+    def ensure_git_push_auth!
+      return if ENV["GH_TOKEN"].to_s.empty? && ENV["GITHUB_TOKEN"].to_s.empty?
+
+      capture!(["gh", "auth", "setup-git"], chdir: repo_root)
     end
 
     def fabro_env
