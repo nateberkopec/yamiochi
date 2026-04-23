@@ -80,6 +80,7 @@ The loop is defined in `factory/yamiochi.dot`.
 | `CHANGELOG.md`, `README.md` | yes | Agent |
 | `SPEC.md` | no | Human |
 | `FACTORY.md` | no | Human |
+| `ops/**` | no | Human |
 | `factory/**` (fabro graph, judge prompts, scenario config) | no | Human |
 | `.github/workflows/**`, `mise.toml`, `hk.pkl` | no | Human |
 | `*.gemspec`, `Gemfile` | proposes only, human-gated | Human |

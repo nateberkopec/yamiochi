@@ -1,7 +1,8 @@
 name: yamiochi-factory
 
 # This is a deployment sketch for the remote/autonomous factory.
-# The control plane runs on a general-purpose remote host.
+# A practical single-host deployment may colocate the control plane,
+# lightweight agent runners, and self-hosted GitHub Actions runners.
 # The benchmark-runner profile is deployed separately on our reference benchmark hardware.
 
 x-runner-base: &runner-base
@@ -56,8 +57,43 @@ services:
     depends_on:
       - postgres
       - minio
+    # Keep these lightweight: authoring + fast local checks only.
     # Scale horizontally, e.g.:
-    # docker compose up --scale agent-runner=4
+    # docker compose up --scale agent-runner=3
+
+  github-runner-fast:
+    image: ghcr.io/myoung34/docker-github-actions-runner:latest
+    restart: unless-stopped
+    environment:
+      REPO_URL: ${GITHUB_RUNNER_REPO_URL}
+      ACCESS_TOKEN: ${GITHUB_RUNNER_ACCESS_TOKEN}
+      RUNNER_NAME: yamiochi-factory-fast
+      RUNNER_SCOPE: repo
+      RUN_AS_ROOT: "true"
+      LABELS: self-hosted,linux,x64,factory-fast
+      DISABLE_AUTO_UPDATE: "1"
+      EPHEMERAL: "1"
+      RUNNER_WORKDIR: /tmp/github-runner
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - github-runner-fast-data:/tmp/github-runner
+
+  github-runner-heavy:
+    image: ghcr.io/myoung34/docker-github-actions-runner:latest
+    restart: unless-stopped
+    environment:
+      REPO_URL: ${GITHUB_RUNNER_REPO_URL}
+      ACCESS_TOKEN: ${GITHUB_RUNNER_ACCESS_TOKEN}
+      RUNNER_NAME: yamiochi-factory-heavy
+      RUNNER_SCOPE: repo
+      RUN_AS_ROOT: "true"
+      LABELS: self-hosted,linux,x64,factory-heavy
+      DISABLE_AUTO_UPDATE: "1"
+      EPHEMERAL: "1"
+      RUNNER_WORKDIR: /tmp/github-runner
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - github-runner-heavy-data:/tmp/github-runner
 
   judge:
     <<: *runner-base
@@ -107,3 +143,5 @@ volumes:
   minio-data:
   repo-cache:
   artifacts:
+  github-runner-fast-data:
+  github-runner-heavy-data:
