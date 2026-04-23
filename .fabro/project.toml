@@ -5,11 +5,8 @@ provider = "openai"
 name = "gpt-5.4"
 
 [run.sandbox]
-provider = "local"
-preserve = true
-
-[run.sandbox.local]
-worktree_mode = "always"
+provider = "docker"
+preserve = false
 
 [run.checkpoint]
 exclude_globs = ["tmp/**", "ops/ansible/.secrets/**"]
