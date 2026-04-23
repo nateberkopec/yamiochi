@@ -53,6 +53,27 @@ class YamiochiServerTest < Minitest::Test
     assert headers.key?("Date"), "Expected response to include a Date header"
   end
 
+  def test_run_omits_wire_body_for_head_requests_but_preserves_content_length
+    body = rack_body("hello", " world")
+    app = ->(_env) { [200, {}, body] }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/", method: "HEAD")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "", response_body(response_text)
+
+    headers = response_headers(response_text)
+    assert_equal "Yamiochi", headers.fetch("Server")
+    assert_equal "close", headers.fetch("Connection")
+    assert_equal "11", headers.fetch("Content-Length")
+    assert headers.key?("Date"), "Expected response to include a Date header"
+    assert body.closed?, "Expected response body to be closed after a HEAD response"
+  end
+
   def test_run_serves_a_directly_supplied_rack_app
     app = ->(_env) { [200, {}, ["direct app"]] }
 
@@ -198,8 +219,24 @@ class YamiochiServerTest < Minitest::Test
     "run ->(_env) { [200, {}, [#{body.dump}]] }\n"
   end
 
-  def basic_request(target)
-    "GET #{target} HTTP/1.1\r\nHost: localhost\r\n\r\n"
+  def rack_body(*chunks)
+    Object.new.tap do |body|
+      body.instance_variable_set(:@chunks, chunks)
+      body.instance_variable_set(:@closed, false)
+      body.define_singleton_method(:each) do |&block|
+        @chunks.each(&block)
+      end
+      body.define_singleton_method(:close) do
+        @closed = true
+      end
+      body.define_singleton_method(:closed?) do
+        @closed
+      end
+    end
+  end
+
+  def basic_request(target, method: "GET")
+    "#{method} #{target} HTTP/1.1\r\nHost: localhost\r\n\r\n"
   end
 
   def request_with_body(method, target, body, headers = {})

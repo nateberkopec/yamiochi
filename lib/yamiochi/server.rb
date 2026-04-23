@@ -114,7 +114,7 @@ module Yamiochi
         return unless request_bytes
 
         request_env = build_request_env(listener, client, request_bytes)
-        write_rack_response(client, *call_app(request_env))
+        write_rack_response(client, request_env.fetch("REQUEST_METHOD"), *call_app(request_env))
       rescue BadRequestError
         write_simple_response(client, 400)
       ensure
@@ -337,10 +337,10 @@ module Yamiochi
     end
 
     def write_simple_response(client, status)
-      write_rack_response(client, status, {}, [])
+      write_rack_response(client, nil, status, {}, [])
     end
 
-    def write_rack_response(client, status, headers, body)
+    def write_rack_response(client, request_method, status, headers, body)
       response_status = Integer(status)
       response_headers = headers || {}
       response_body = read_response_body(body)
@@ -351,7 +351,7 @@ module Yamiochi
         client.write("#{name}: #{value}\r\n")
       end
       client.write("\r\n")
-      client.write(response_body)
+      client.write(response_body) unless request_method == "HEAD"
     ensure
       body.close if body.respond_to?(:close)
     end
