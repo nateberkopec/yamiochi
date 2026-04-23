@@ -30,7 +30,7 @@ digraph YamiochiImplementIssue {
     validate [
         label="Validate"
         shape=parallelogram
-        script="mise run lint && mise run test && mise run scenarios"
+        script="mise trust . >/dev/null 2>&1 || true; mise run lint && mise run test && mise run scenarios"
         timeout=20m
         goal_gate=true
     ]
