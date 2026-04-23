@@ -1,9 +1,5 @@
 # Yamiochi Specification
 
-This document is a non-exhaustive overview of the functionality of Yamiochi.
-
-Yamiochi's tests, contained in `test/`, are considered subsidiary to this document. Where behavior is undefined by this specification, the tests are considered authoritative. However, the tests must never contradict this specification.
-
 ## 1. Overview
 
 Yamiochi is a minimal, RFC-compliant HTTP/1.1 Ruby Rack application server designed for deployment behind a reverse proxy (e.g., Nginx). It uses a preforking process model for concurrency and targets correctness over feature breadth.
@@ -14,6 +10,11 @@ Yamiochi is a minimal, RFC-compliant HTTP/1.1 Ruby Rack application server desig
 - Preforking concurrency only: no threads, no async I/O
 - 100% compliance with current RFCs on HTTP for supported features.
 - Least surprise. Where implemented, the user-facing behavior should be broadly similar to Puma, Unicorn and Webrick.
+- What (limited) things we do, we do securely (lacking vulnerabilities) and with high performance.
+
+### 1.1 This Document's Precedence
+
+Yamiochi's tests, contained in `test/`, are considered subsidiary to this document. Where behavior is undefined by this specification, the tests are considered authoritative. However, the tests must never contradict this specification.
 
 ## 2. Non-Goals
 
@@ -160,9 +161,17 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 
 **Ruby version requirement:** >= 3.2
 
-## 12. Definition of Done
+## 12. Security and Performance
 
-### 12.1 Process Model
+Yamiochi should be secure, in that there are no vulnerabilities in it which would require a patch-level release to fix and potentially a CVE.
+
+Yamiochi will be performant in terms of throughput and latency. It must process 400,000 hello world requests per second over 4 worker processes on our reference benchmark hardware.
+
+Yamiochi must not implement or use any native language extensions. They are difficult to maintain from a security perspective.
+
+## 13. Definition of Done
+
+### 13.1 Process Model
 
 - [ ] Master binds all sockets before forking any workers
 - [ ] Forking N workers produces exactly N live worker processes
@@ -170,11 +179,11 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] `before_fork` hook is called in master before each worker fork
 - [ ] `on_worker_boot` hook is called inside each worker after fork, before the accept loop
 
-### 12.2 HTTP Request Parsing
+### 13.2 HTTP Request Parsing
 
 - [ ] Complies fully with HTTP 1.1
 
-### 12.3 HTTP Response
+### 13.3 HTTP Response
 
 - [ ] Every response includes `Date`, `Server: Yamiochi`, `Connection: close`
 - [ ] Responses with known body length use `Content-Length`, not chunked
@@ -183,7 +192,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] 500 is returned when the Rack app raises an unhandled exception
 - [ ] `body.close` is called after response is written when available
 
-### 12.4 Rack Compliance
+### 13.4 Rack Compliance
 
 - [ ] All required Rack 3 environment keys are present and correctly typed
 - [ ] `rack.input` supports `#read`, `#gets`, `#each`, `#rewind`
@@ -194,7 +203,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] Application passes `Rack::Lint` without errors
 - [ ] Rackup handler `yamiochi` is registered and invocable via `rackup -s yamiochi`
 
-### 12.5 Configuration
+### 13.5 Configuration
 
 - [ ] `--bind tcp://HOST:PORT` binds to specified TCP address
 - [ ] `--bind unix:///path` binds to specified Unix socket
@@ -205,7 +214,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] CLI flags override equivalent config file settings
 - [ ] Missing config file is not an error (when using default path)
 
-### 12.6 Networking
+### 13.6 Networking
 
 - [ ] TCP bind to `0.0.0.0:PORT` works and accepts connections
 - [ ] TCP bind to a specific interface address works
@@ -214,7 +223,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] Unix socket file is removed on clean exit
 - [ ] `TCP_NODELAY` is set on TCP sockets
 
-### 12.7 Signals
+### 13.7 Signals
 
 - [ ] SIGTERM triggers graceful shutdown; in-flight requests complete before exit
 - [ ] SIGQUIT triggers graceful shutdown; identical behavior to SIGTERM
@@ -222,7 +231,7 @@ Yamiochi is distributed as a Ruby gem named `yamiochi`.
 - [ ] SIGHUP reopens stdout/stderr log files in master and all workers
 - [ ] PID file is removed on clean exit (SIGTERM, SIGQUIT, or SIGINT)
 
-### 12.8 Logging
+### 13.8 Logging
 
 - [ ] Each completed request produces one access log line with method, path, status, duration, bytes
 - [ ] Worker crashes are logged at WARN level
