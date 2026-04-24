@@ -51,12 +51,14 @@ module Yamiochi
 
     attr_reader :rackup_path, :host, :port, :bound_port
 
-    def initialize(rackup_path: nil, app: nil, host: DEFAULT_HOST, port: DEFAULT_PORT, out: $stdout, err: $stderr)
+    def initialize(rackup_path: nil, app: nil, host: DEFAULT_HOST, port: DEFAULT_PORT, out: $stdout, err: $stderr,
+      max_requests: 1)
       validate_app_source!(rackup_path, app)
       @rackup_path = rackup_path && File.expand_path(rackup_path.to_s)
       @rack_app = app
       @host = host
       @port = Integer(port)
+      @max_requests = normalize_max_requests(max_requests)
       @bound_port = nil
       @out = out
       @err = err
@@ -86,12 +88,19 @@ module Yamiochi
       raise ArgumentError, "Rackup file not found: #{rackup_path}"
     end
 
+    def normalize_max_requests(value)
+      normalized_value = Integer(value)
+      return normalized_value if normalized_value >= 1
+
+      raise ArgumentError, "max_requests must be >= 1"
+    end
+
     def boot
       listener = nil
 
       begin
         listener = open_listener
-        handle_single_client(listener)
+        handle_clients(listener)
       ensure
         close_socket(listener)
         flush_streams
@@ -103,6 +112,12 @@ module Yamiochi
       listener.listen(1024)
       @bound_port = listener.local_address.ip_port
       listener
+    end
+
+    def handle_clients(listener)
+      @max_requests.times do
+        handle_single_client(listener)
+      end
     end
 
     def handle_single_client(listener)
