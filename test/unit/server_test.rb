@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "socket"
+require "json"
+require "rack/lint"
 require "stringio"
 require "tmpdir"
 
@@ -264,6 +266,51 @@ class YamiochiServerTest < Minitest::Test
     assert_equal "false", response_body(response_text)
   end
 
+  def test_run_builds_a_rack_3_request_environment
+    captured_env = nil
+    rack_errors = StringIO.new
+    app = lambda do |env|
+      captured_env = env
+      [200, {"Content-Length" => "2"}, ["ok"]]
+    end
+
+    response_text, server, thread, bound_port = run_server_request(
+      app: app,
+      err: rack_errors,
+      request_text: request_with_body(
+        "POST",
+        "/rack/env?debug=1",
+        "hello world",
+        "Host" => "example.test:1234",
+        "Content-Type" => "text/plain; charset=utf-8"
+      )
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    refute_nil captured_env
+    assert captured_env.keys.all?(String), "Expected Rack env keys to all be strings"
+
+    assert_equal "POST", captured_env.fetch("REQUEST_METHOD")
+    assert_equal "", captured_env.fetch("SCRIPT_NAME")
+    assert_equal "/rack/env", captured_env.fetch("PATH_INFO")
+    assert_equal "debug=1", captured_env.fetch("QUERY_STRING")
+    assert_equal "example.test", captured_env.fetch("SERVER_NAME")
+    assert_equal bound_port.to_s, captured_env.fetch("SERVER_PORT")
+    assert_equal "HTTP/1.1", captured_env.fetch("SERVER_PROTOCOL")
+    assert_equal [3, 0], captured_env.fetch("rack.version")
+    assert_equal "http", captured_env.fetch("rack.url_scheme")
+    assert_same rack_errors, captured_env.fetch("rack.errors")
+    assert_instance_of StringIO, captured_env.fetch("rack.input")
+    assert_equal false, captured_env.fetch("rack.multithread")
+    assert_equal true, captured_env.fetch("rack.multiprocess")
+    assert_equal false, captured_env.fetch("rack.run_once")
+    assert_equal false, captured_env.fetch("rack.hijack?")
+    assert_equal "example.test:1234", captured_env.fetch("HTTP_HOST")
+    assert_equal "11", captured_env.fetch("CONTENT_LENGTH")
+    assert_equal "text/plain; charset=utf-8", captured_env.fetch("CONTENT_TYPE")
+  end
+
   def test_initialize_requires_exactly_one_app_source
     error = assert_raises(ArgumentError) do
       Yamiochi::Server.new(out: StringIO.new, err: StringIO.new)
@@ -370,6 +417,66 @@ class YamiochiServerTest < Minitest::Test
     assert_equal "0:abc", response_body(response_text)
   end
 
+  def test_run_exposes_rack_input_with_gets_each_read_and_rewind
+    request_body = "alpha\nbeta\n"
+    app = lambda do |env|
+      input = env.fetch("rack.input")
+      payload = {
+        "start_pos" => input.pos,
+        "first_gets" => input.gets,
+        "second_gets" => input.gets,
+        "third_gets" => input.gets
+      }
+
+      input.rewind
+      payload["rewound_pos"] = input.pos
+      each_lines = []
+      input.each { |line| each_lines << line }
+      payload["each_lines"] = each_lines
+
+      input.rewind
+      payload["read_after_rewind"] = input.read
+      payload["read_at_eof"] = input.read
+
+      response_body = JSON.generate(payload)
+      [200, {"Content-Length" => response_body.bytesize.to_s}, [response_body]]
+    end
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: request_with_body("POST", "/submit", request_body, "Content-Type" => "text/plain")
+    )
+
+    assert_server_thread_exits(thread, server)
+
+    payload = JSON.parse(response_body(response_text))
+    assert_equal 0, payload.fetch("start_pos")
+    assert_equal "alpha\n", payload.fetch("first_gets")
+    assert_equal "beta\n", payload.fetch("second_gets")
+    assert_nil payload.fetch("third_gets")
+    assert_equal 0, payload.fetch("rewound_pos")
+    assert_equal ["alpha\n", "beta\n"], payload.fetch("each_lines")
+    assert_equal request_body, payload.fetch("read_after_rewind")
+    assert_equal "", payload.fetch("read_at_eof")
+  end
+
+  def test_run_passes_a_real_request_through_rack_lint
+    linted_app = Rack::Lint.new(
+      lambda do |_env|
+        [200, {"content-type" => "text/plain", "content-length" => "7"}, ["lint ok"]]
+      end
+    )
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: linted_app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "lint ok", response_body(response_text)
+  end
+
   def test_run_preserves_unrecognized_request_methods
     rackup_source = <<~RUBY
       run ->(env) { [200, {}, [env.fetch("REQUEST_METHOD")]] }
@@ -445,7 +552,7 @@ class YamiochiServerTest < Minitest::Test
     "#{method} #{target} HTTP/1.1\r\n#{header_lines.join("\r\n")}\r\n\r\n#{body}"
   end
 
-  def run_server_request(request_text:, rackup_source: nil, app: nil)
+  def run_server_request(request_text:, rackup_source: nil, app: nil, out: StringIO.new, err: StringIO.new)
     Dir.mktmpdir("yamiochi-server-test") do |dir|
       server = if rackup_source
         config_ru = File.join(dir, "config.ru")
@@ -455,16 +562,16 @@ class YamiochiServerTest < Minitest::Test
           rackup_path: config_ru,
           host: "127.0.0.1",
           port: 0,
-          out: StringIO.new,
-          err: StringIO.new
+          out: out,
+          err: err
         )
       else
         Yamiochi::Server.new(
           app: app,
           host: "127.0.0.1",
           port: 0,
-          out: StringIO.new,
-          err: StringIO.new
+          out: out,
+          err: err
         )
       end
 
