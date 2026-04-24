@@ -153,10 +153,13 @@ module Yamiochi
     def build_request_env(listener, client, request_bytes)
       request = parse_request(request_bytes)
       path_info, query_string = split_request_target(request.fetch(:request_target))
-      request_body = read_request_body(client, request.fetch(:buffered_body), request[:content_length])
-      rack_input = StringIO.new(request_body)
-      rack_input.rewind
 
+      request_env(listener, request, path_info:, query_string:)
+        .merge(rack_input_env(client, request))
+        .merge(rack_headers(request.fetch(:headers)))
+    end
+
+    def request_env(listener, request, path_info:, query_string:)
       {
         "REQUEST_METHOD" => request.fetch(:method),
         "SCRIPT_NAME" => "",
@@ -167,13 +170,19 @@ module Yamiochi
         "SERVER_PROTOCOL" => request.fetch(:server_protocol),
         "rack.version" => [3, 0],
         "rack.url_scheme" => "http",
-        "rack.input" => rack_input,
         "rack.errors" => err,
         "rack.multithread" => false,
         "rack.multiprocess" => true,
         "rack.run_once" => false,
         "rack.hijack?" => false
-      }.merge(rack_headers(request.fetch(:headers)))
+      }
+    end
+
+    def rack_input_env(client, request)
+      request_body = read_request_body(client, request.fetch(:buffered_body), request[:content_length])
+      rack_input = StringIO.new(request_body)
+      rack_input.rewind
+      {"rack.input" => rack_input}
     end
 
     def parse_request(request_bytes)
