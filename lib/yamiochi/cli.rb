@@ -69,7 +69,7 @@ module Yamiochi
         raise ArgumentError, "invalid bind URI: #{bind_uri.inspect} (expected tcp://HOST:PORT)"
       end
 
-      { host:, port: }
+      {host:, port:}
     rescue URI::InvalidURIError
       raise ArgumentError, "invalid bind URI: #{bind_uri.inspect} (expected tcp://HOST:PORT)"
     end
