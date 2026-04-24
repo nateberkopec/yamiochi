@@ -9,8 +9,9 @@ require_relative "../test_helper"
 class YamiochiExecutableTest < Minitest::Test
   def test_executable_serves_one_http_response_and_exits_successfully_with_explicit_bind
     Dir.mktmpdir("yamiochi-exe-test") do |dir|
+      body_text = "hello from exe"
       config_ru = File.join(dir, "config.ru")
-      File.write(config_ru, rackup_contents("hello from exe"))
+      File.write(config_ru, rackup_contents(body_text))
 
       with_available_tcp_port do |port|
         bind_uri = "tcp://127.0.0.1:#{port}"
@@ -41,13 +42,13 @@ class YamiochiExecutableTest < Minitest::Test
         assert_empty stdout_text
         assert_empty stderr_text
         assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
-        assert_equal "hello from exe", response_body(response_text)
+        assert_equal body_text, response_body(response_text)
 
         headers = response_headers(response_text)
         assert_equal "Yamiochi", headers.fetch("Server")
         assert_equal "close", headers.fetch("Connection")
-        refute headers.key?("Content-Length")
-        assert_equal "chunked", headers.fetch("Transfer-Encoding")
+        assert_equal body_text.bytesize.to_s, headers.fetch("Content-Length")
+        refute headers.key?("Transfer-Encoding")
         assert headers.key?("Date"), "Expected response to include a Date header"
       end
     end
