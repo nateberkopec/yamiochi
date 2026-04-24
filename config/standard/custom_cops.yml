@@ -1,0 +1,7 @@
+require:
+  - ./custom_cops/no_sleep_in_tests
+
+CustomCops/NoSleepInTests:
+  Enabled: true
+  Include:
+    - test/**/*.rb

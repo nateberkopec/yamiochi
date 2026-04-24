@@ -127,7 +127,7 @@ module Yamiochi
     end
 
     def read_request_bytes(client)
-      request_bytes = String.new.b
+      request_bytes = +"".b
 
       loop do
         request_bytes << client.readpartial(1024)
@@ -200,7 +200,7 @@ module Yamiochi
       raise BadRequestError, "incomplete request headers" unless header_end
 
       header_block = request_bytes.byteslice(0, header_end)
-      buffered_body = request_bytes.byteslice(header_end + HEADER_TERMINATOR.bytesize, request_bytes.bytesize) || String.new.b
+      buffered_body = request_bytes.byteslice(header_end + HEADER_TERMINATOR.bytesize, request_bytes.bytesize) || +"".b
       [header_block, buffered_body]
     end
 
@@ -278,7 +278,7 @@ module Yamiochi
     end
 
     def read_request_body(client, buffered_body, content_length)
-      return String.new.b unless content_length
+      return +"".b unless content_length
 
       body = buffered_body.byteslice(0, content_length).to_s.b
 
@@ -326,7 +326,7 @@ module Yamiochi
 
     def call_app(request_env)
       rack_app.call(request_env)
-    rescue StandardError
+    rescue
       [500, {}, []]
     end
 

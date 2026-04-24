@@ -13,7 +13,7 @@ description = "Run the unit test suite"
 run = "ruby -S rake test"
 
 [tasks.lint]
-description = "Run fast syntax and repository lint checks"
+description = "Run standardrb with project custom cops"
 run = "ruby -S rake lint"
 
 [tasks.scenarios]

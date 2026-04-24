@@ -38,7 +38,7 @@ module YamiochiFactory
       target_gate = gate.fetch("name")
       {
         "type" => "gate_packet",
-        "id" => "gate-#{target_gate.tr('_', '-')}-#{priority_reason.tr('_', '-')}",
+        "id" => "gate-#{target_gate.tr("_", "-")}-#{priority_reason.tr("_", "-")}",
         "title" => work_title(gate:, priority_reason:),
         "target_gate" => target_gate,
         "gate_level" => gate.fetch("level"),
@@ -50,16 +50,16 @@ module YamiochiFactory
         "evidence" => [state_path, *Array(snapshot["artifacts"])].uniq,
         "artifacts" => Array(snapshot["artifacts"]),
         "pull_request_title" => work_title(gate:, priority_reason:),
-        "branch_slug" => "gate-#{target_gate.tr('_', '-')}"
+        "branch_slug" => "gate-#{target_gate.tr("_", "-")}"
       }
     end
     private_class_method :packet_for
 
     def default_snapshot(gate:, gate_state:)
       {
-        "candidate_value" => gate_state.fetch("baseline_value", gate.fetch("metric_type") == "score" ? 0 : false),
-        "baseline_value" => gate_state.fetch("baseline_value", gate.fetch("metric_type") == "score" ? 0 : nil),
-        "threshold_value" => gate_state.fetch("baseline_value", gate.fetch("metric_type") == "score" ? 0 : nil),
+        "candidate_value" => gate_state.fetch("baseline_value", (gate.fetch("metric_type") == "score") ? 0 : false),
+        "baseline_value" => gate_state.fetch("baseline_value", (gate.fetch("metric_type") == "score") ? 0 : nil),
+        "threshold_value" => gate_state.fetch("baseline_value", (gate.fetch("metric_type") == "score") ? 0 : nil),
         "full_pass_target" => nil,
         "full_pass" => false,
         "priority_reason" => nil,
@@ -82,16 +82,16 @@ module YamiochiFactory
 
     def work_title(gate:, priority_reason:)
       prefix = case priority_reason
-               when "hard_fail"
-                 "Repair gate"
-               when "ratchet_regression"
-                 "Recover gate"
-               when "ratchet_opportunity"
-                 "Improve gate"
-               else
-                 "Advance gate"
-               end
-      "#{prefix}: #{gate.fetch('name')}"
+      when "hard_fail"
+        "Repair gate"
+      when "ratchet_regression"
+        "Recover gate"
+      when "ratchet_opportunity"
+        "Improve gate"
+      else
+        "Advance gate"
+      end
+      "#{prefix}: #{gate.fetch("name")}"
     end
     private_class_method :work_title
 
@@ -107,21 +107,21 @@ module YamiochiFactory
 
     def default_focus_area(gate:, snapshot:)
       parts = [gate.fetch("title")]
-      parts << "current #{snapshot.fetch('candidate_value')}"
-      parts << "baseline #{snapshot['baseline_value']}" if gate.fetch("level") == "ratchet"
+      parts << "current #{snapshot.fetch("candidate_value")}"
+      parts << "baseline #{snapshot["baseline_value"]}" if gate.fetch("level") == "ratchet"
       parts.join("; ")
     end
     private_class_method :default_focus_area
 
     def success_condition(gate:, snapshot:)
       if gate.fetch("level") == "hard"
-        "Make #{gate.fetch('name')} fully passing"
+        "Make #{gate.fetch("name")} fully passing"
       elsif gate.fetch("level") == "ratchet"
-        target = snapshot["full_pass_target"] || "> #{snapshot.fetch('baseline_value', 0)}"
-        "Improve #{gate.fetch('name')} toward #{target} without regressing below #{snapshot.fetch('threshold_value', snapshot.fetch('baseline_value', 0))}"
+        target = snapshot["full_pass_target"] || "> #{snapshot.fetch("baseline_value", 0)}"
+        "Improve #{gate.fetch("name")} toward #{target} without regressing below #{snapshot.fetch("threshold_value", snapshot.fetch("baseline_value", 0))}"
       else
         target = snapshot["full_pass_target"] || "a measurable score improvement"
-        "Increase #{gate.fetch('name')} toward #{target}"
+        "Increase #{gate.fetch("name")} toward #{target}"
       end
     end
     private_class_method :success_condition

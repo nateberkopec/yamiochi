@@ -12,6 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
+      - run: bundle install --jobs 4 --retry 3
       - run: mise run lint
 
   test:

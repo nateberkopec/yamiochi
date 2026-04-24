@@ -53,7 +53,7 @@ module YamiochiFactory
             process_work_item(work_item)
             clear_work_failure(work_failure_key(work_item))
           end
-        rescue StandardError => e
+        rescue => e
           failure_key = if work_item
             work_failure_key(work_item)
           elsif pull_request&.fetch("issue_number", nil)
@@ -78,7 +78,7 @@ module YamiochiFactory
       when "gate_promotion"
         process_promotion_work_item(work_item)
       else
-        raise "Unknown work item type #{work_item.fetch('type').inspect}"
+        raise "Unknown work item type #{work_item.fetch("type").inspect}"
       end
     end
 
@@ -163,7 +163,7 @@ module YamiochiFactory
         "type" => "issue",
         "id" => issue_failure_key(issue.fetch("number")),
         "pull_request_title" => issue.fetch("title"),
-        "branch_slug" => "issue-#{issue.fetch('number')}"
+        "branch_slug" => "issue-#{issue.fetch("number")}"
       )
     end
 
@@ -194,7 +194,7 @@ module YamiochiFactory
 
         repair_attempt += 1
         if repair_attempt > options.fetch(:max_repairs)
-          raise "PR ##{pull_request.fetch('number')} failed after #{repair_attempt - 1} repair attempts"
+          raise "PR ##{pull_request.fetch("number")} failed after #{repair_attempt - 1} repair attempts"
         end
 
         repair_pull_request(pull_request.fetch("number"), repair_attempt)
@@ -228,7 +228,7 @@ module YamiochiFactory
       case work_item.fetch("type")
       when "issue"
         slug = work_item.fetch("title").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 40]
-        "issue-#{work_item.fetch('number')}-#{slug}-#{timestamp}"
+        "issue-#{work_item.fetch("number")}-#{slug}-#{timestamp}"
       else
         slug = work_item.fetch("branch_slug").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 60]
         "#{slug}-#{timestamp}"
@@ -261,7 +261,7 @@ module YamiochiFactory
       begin
         attempts += 1
         run_workflow(worktree_dir, workflow, goal)
-      rescue StandardError => e
+      rescue => e
         raise unless retryable_run_error?(e) && attempts < options.fetch(:max_run_attempts)
 
         sleep options.fetch(:poll_interval)
@@ -277,7 +277,7 @@ module YamiochiFactory
       )
       run_id = JSON.parse(stdout).fetch("run_id")
       wait_status = JSON.parse(capture!(["fabro", "wait", run_id, "--json"], chdir: worktree_dir, env: fabro_env).first)
-      raise "Fabro run #{run_id} finished with status #{wait_status.fetch('status')}" unless wait_status.fetch("status") == "succeeded"
+      raise "Fabro run #{run_id} finished with status #{wait_status.fetch("status")}" unless wait_status.fetch("status") == "succeeded"
 
       run_id
     end
@@ -295,7 +295,7 @@ module YamiochiFactory
 
       create_pull_request(run_id)
       pull_request_record(run_id)
-    rescue StandardError
+    rescue
       manual_create_pull_request(work_item, worktree_dir, run_branch)
     end
 
@@ -326,11 +326,11 @@ module YamiochiFactory
     def commit_message_for(work_item)
       case work_item.fetch("type")
       when "issue"
-        "Implement ##{work_item.fetch('number')}: #{work_item.fetch('title')}"
+        "Implement ##{work_item.fetch("number")}: #{work_item.fetch("title")}"
       when "gate_promotion"
-        "Promote gate #{work_item.fetch('target_gate')} to #{work_item.fetch('next_level')}"
+        "Promote gate #{work_item.fetch("target_gate")} to #{work_item.fetch("next_level")}"
       else
-        "Improve gate #{work_item.fetch('target_gate')}: #{work_item.fetch('priority_reason').tr('_', ' ')}"
+        "Improve gate #{work_item.fetch("target_gate")}: #{work_item.fetch("priority_reason").tr("_", " ")}"
       end
     end
 
@@ -340,7 +340,7 @@ module YamiochiFactory
       else
         merge_pull_request_with_gh(pull_request)
       end
-    rescue StandardError
+    rescue
       merge_pull_request_with_gh(pull_request)
     end
 
@@ -377,8 +377,8 @@ module YamiochiFactory
         ).fetch("statusCheckRollup", [])
 
         buckets = checks.map { |check| check_bucket(check) }
-        return { status: :success, checks: } if !checks.empty? && buckets.all? { |bucket| %i[pass skipping].include?(bucket) }
-        return { status: :fail, checks: } if buckets.include?(:fail)
+        return {status: :success, checks:} if !checks.empty? && buckets.all? { |bucket| %i[pass skipping].include?(bucket) }
+        return {status: :fail, checks:} if buckets.include?(:fail)
 
         sleep options.fetch(:poll_interval)
       end

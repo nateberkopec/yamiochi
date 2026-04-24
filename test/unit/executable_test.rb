@@ -89,7 +89,7 @@ class YamiochiExecutableTest < Minitest::Test
 
   def decode_chunked_body(body)
     remaining = body.to_s.b
-    decoded = String.new.b
+    decoded = +"".b
 
     loop do
       line_end = remaining.index("\r\n")
@@ -142,7 +142,7 @@ class YamiochiExecutableTest < Minitest::Test
 
       break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
-      sleep 0.01
+      IO.select(nil, nil, nil, 0.01)
     end
 
     flunk "Timed out waiting for executable to accept a client connection"

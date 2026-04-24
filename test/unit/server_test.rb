@@ -84,7 +84,7 @@ class YamiochiServerTest < Minitest::Test
 
   def test_run_preserves_explicit_content_length_when_present
     body = rack_body("hello", " world")
-    app = ->(_env) { [200, { "Content-Length" => "11" }, body] }
+    app = ->(_env) { [200, {"Content-Length" => "11"}, body] }
 
     response_text, server, thread, _bound_port = run_server_request(
       app: app,
@@ -242,7 +242,7 @@ class YamiochiServerTest < Minitest::Test
   end
 
   def test_run_preserves_unrecognized_request_methods
-    rackup_source = <<~'RUBY'
+    rackup_source = <<~RUBY
       run ->(env) { [200, {}, [env.fetch("REQUEST_METHOD")]] }
     RUBY
 
@@ -292,13 +292,13 @@ class YamiochiServerTest < Minitest::Test
 
   def request_with_body(method, target, body, headers = {})
     body = body.b
-    request_headers = { "Host" => "localhost", "Content-Length" => body.bytesize.to_s }.merge(headers)
+    request_headers = {"Host" => "localhost", "Content-Length" => body.bytesize.to_s}.merge(headers)
     header_lines = request_headers.map { |name, value| "#{name}: #{value}" }
 
     "#{method} #{target} HTTP/1.1\r\n#{header_lines.join("\r\n")}\r\n\r\n#{body}"
   end
 
-  def run_server_request(rackup_source: nil, app: nil, request_text:)
+  def run_server_request(request_text:, rackup_source: nil, app: nil)
     Dir.mktmpdir("yamiochi-server-test") do |dir|
       server = if rackup_source
         config_ru = File.join(dir, "config.ru")
@@ -381,7 +381,7 @@ class YamiochiServerTest < Minitest::Test
 
   def decode_chunked_body(body)
     remaining = body.to_s.b
-    decoded = String.new.b
+    decoded = +"".b
 
     loop do
       line_end = remaining.index("\r\n")
@@ -416,7 +416,7 @@ class YamiochiServerTest < Minitest::Test
 
       break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
-      sleep 0.01
+      IO.select(nil, nil, nil, 0.01)
     end
 
     flunk "Timed out waiting for server to bind a port"

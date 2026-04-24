@@ -12,7 +12,7 @@ module YamiochiFactory
     end
 
     def self.load(path = default_path)
-      raw = YAML.safe_load(File.read(path), aliases: false) || {}
+      raw = YAML.safe_load_file(path, aliases: false) || {}
       gates = raw.fetch("gates", {}).each_with_object({}) do |(name, gate), registry|
         registry[name.to_s] = normalize_gate(name.to_s, gate || {})
       end

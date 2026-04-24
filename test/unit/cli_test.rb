@@ -18,8 +18,8 @@ class YamiochiCliTest < Minitest::Test
 
     reset!
 
-    def initialize(rackup_path:, host: Yamiochi::Server::DEFAULT_HOST, port: Yamiochi::Server::DEFAULT_PORT, out:, err:)
-      self.class.instance_variable_get(:@calls) << { rackup_path:, host:, port:, out:, err: }
+    def initialize(rackup_path:, out:, err:, host: Yamiochi::Server::DEFAULT_HOST, port: Yamiochi::Server::DEFAULT_PORT)
+      self.class.instance_variable_get(:@calls) << {rackup_path:, host:, port:, out:, err:}
     end
 
     def run

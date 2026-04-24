@@ -27,7 +27,7 @@ module YamiochiFactory
 
         {
           "type" => "gate_promotion",
-          "id" => "promote-#{gate.fetch('name').tr('_', '-')}-to-#{target_level}",
+          "id" => "promote-#{gate.fetch("name").tr("_", "-")}-to-#{target_level}",
           "target_gate" => gate.fetch("name"),
           "current_level" => gate.fetch("level"),
           "next_level" => target_level,
@@ -37,9 +37,9 @@ module YamiochiFactory
             "required_full_pass_streak" => required_streak,
             "last_result" => gate_state["last_result"]
           },
-          "title" => "Promote gate: #{gate.fetch('name')} #{gate.fetch('level')} → #{target_level}",
-          "pull_request_title" => "Promote gate: #{gate.fetch('name')} #{gate.fetch('level')} → #{target_level}",
-          "branch_slug" => "promote-#{gate.fetch('name').tr('_', '-')}-to-#{target_level}"
+          "title" => "Promote gate: #{gate.fetch("name")} #{gate.fetch("level")} → #{target_level}",
+          "pull_request_title" => "Promote gate: #{gate.fetch("name")} #{gate.fetch("level")} → #{target_level}",
+          "branch_slug" => "promote-#{gate.fetch("name").tr("_", "-")}-to-#{target_level}"
         }
       end.sort_by { |proposal| [proposal.fetch("selection_priority"), proposal.fetch("target_gate")] }
     end
@@ -91,7 +91,7 @@ module YamiochiFactory
 
     def to_work_item(proposal)
       proposal.merge(
-        "success_condition" => "Update factory/gates.yml so #{proposal.fetch('target_gate')} moves from #{proposal.fetch('current_level')} to #{proposal.fetch('next_level')} and passes promotion checks",
+        "success_condition" => "Update factory/gates.yml so #{proposal.fetch("target_gate")} moves from #{proposal.fetch("current_level")} to #{proposal.fetch("next_level")} and passes promotion checks",
         "focus_area" => "Only change factory/gates.yml. Do not weaken any other gate field.",
         "artifacts" => ["factory/gates.yml"]
       )
@@ -112,7 +112,7 @@ module YamiochiFactory
     private_class_method :same_except_level?
 
     def strip_level(gate)
-      gate.reject { |key, _value| key == "level" }
+      gate.except("level")
     end
     private_class_method :strip_level
   end

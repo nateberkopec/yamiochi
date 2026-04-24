@@ -69,7 +69,7 @@ module Yamiochi
         raise ArgumentError, "invalid bind URI: #{bind_uri.inspect} (expected tcp://HOST:PORT)"
       end
 
-      { host:, port: }
+      {host:, port:}
     rescue URI::InvalidURIError
       raise ArgumentError, "invalid bind URI: #{bind_uri.inspect} (expected tcp://HOST:PORT)"
     end
@@ -99,7 +99,7 @@ module Yamiochi
       end
 
       if argv.length > 1
-        err.puts "unexpected arguments: #{argv[1..].join(' ')}"
+        err.puts "unexpected arguments: #{argv[1..].join(" ")}"
         err.puts USAGE
         return
       end
