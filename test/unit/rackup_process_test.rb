@@ -12,8 +12,9 @@ class YamiochiRackupProcessTest < Minitest::Test
     skip_unless_rackup_available
 
     Dir.mktmpdir("yamiochi-rackup-test") do |dir|
+      body_text = "hello from rackup"
       config_ru = File.join(dir, "config.ru")
-      File.write(config_ru, rackup_contents("hello from rackup"))
+      File.write(config_ru, rackup_contents(body_text))
 
       port = available_port
       stdout_text = nil
@@ -48,8 +49,8 @@ class YamiochiRackupProcessTest < Minitest::Test
       headers = response_headers(response_text)
       assert_equal "Yamiochi", headers.fetch("Server")
       assert_equal "close", headers.fetch("Connection")
-      refute headers.key?("Content-Length")
-      assert_equal "chunked", headers.fetch("Transfer-Encoding")
+      assert_equal body_text.bytesize.to_s, headers.fetch("Content-Length")
+      refute headers.key?("Transfer-Encoding")
       assert headers.key?("Date"), "Expected response to include a Date header"
     end
   end

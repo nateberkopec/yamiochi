@@ -59,6 +59,50 @@ class YamiochiServerTest < Minitest::Test
     assert body.closed?, "Expected streamed response body to be closed after writing"
   end
 
+  def test_run_uses_content_length_for_array_backed_response_bodies
+    body = array_backed_body("hello world")
+    app = ->(_env) { [200, {}, body] }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "hello world", response_body(response_text)
+    assert_equal "hello world", wire_response_body(response_text)
+
+    headers = response_headers(response_text)
+    assert_equal "Yamiochi", headers.fetch("Server")
+    assert_equal "close", headers.fetch("Connection")
+    assert_equal "11", headers.fetch("Content-Length")
+    refute headers.key?("Transfer-Encoding")
+    assert headers.key?("Date"), "Expected response to include a Date header"
+    assert_equal 1, body.each_calls, "Expected identity responses to iterate the body once"
+    assert body.closed?, "Expected array-backed response body to be closed after writing"
+  end
+
+  def test_run_counts_bytes_across_multi_chunk_array_backed_response_bodies
+    chunks = ["hi", " ", "💎"]
+    body = array_backed_body(*chunks)
+    app = ->(_env) { [200, {}, body] }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal chunks.join.b, response_body(response_text)
+
+    headers = response_headers(response_text)
+    assert_equal chunks.join.bytesize.to_s, headers.fetch("Content-Length")
+    refute headers.key?("Transfer-Encoding")
+    assert_equal 1, body.each_calls, "Expected identity responses to iterate the multi-chunk body once"
+    assert body.closed?, "Expected multi-chunk array-backed response body to be closed after writing"
+  end
+
   def test_run_omits_wire_body_for_head_requests_but_preserves_chunked_framing_headers
     body = rack_body("hello", " world")
     app = ->(_env) { [200, {}, body] }
@@ -80,6 +124,29 @@ class YamiochiServerTest < Minitest::Test
     assert headers.key?("Date"), "Expected response to include a Date header"
     assert_equal 0, body.each_calls, "Expected HEAD responses to avoid iterating the body"
     assert body.closed?, "Expected response body to be closed after a HEAD response"
+  end
+
+  def test_run_omits_wire_body_for_head_requests_but_preserves_computed_content_length
+    body = array_backed_body("hello", " world")
+    app = ->(_env) { [200, {}, body] }
+
+    response_text, server, thread, _bound_port = run_server_request(
+      app: app,
+      request_text: basic_request("/", method: "HEAD")
+    )
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal "", wire_response_body(response_text)
+
+    headers = response_headers(response_text)
+    assert_equal "Yamiochi", headers.fetch("Server")
+    assert_equal "close", headers.fetch("Connection")
+    assert_equal "11", headers.fetch("Content-Length")
+    refute headers.key?("Transfer-Encoding")
+    assert headers.key?("Date"), "Expected response to include a Date header"
+    assert_equal 0, body.each_calls, "Expected HEAD responses to avoid iterating array-backed bodies"
+    assert body.closed?, "Expected array-backed response body to be closed after a HEAD response"
   end
 
   def test_run_preserves_explicit_content_length_when_present
@@ -266,14 +333,32 @@ class YamiochiServerTest < Minitest::Test
   end
 
   def rack_body(*chunks)
-    Object.new.tap do |body|
-      body.instance_variable_set(:@chunks, chunks)
-      body.instance_variable_set(:@closed, false)
-      body.instance_variable_set(:@each_calls, 0)
+    tracked_body(*chunks) do |body|
       body.define_singleton_method(:each) do |&block|
         @each_calls += 1
         @chunks.each(&block)
       end
+    end
+  end
+
+  def array_backed_body(*chunks)
+    tracked_body(*chunks) do |body|
+      body.define_singleton_method(:to_ary) do
+        @chunks
+      end
+      body.define_singleton_method(:each) do |&block|
+        @each_calls += 1
+        @chunks.each(&block)
+      end
+    end
+  end
+
+  def tracked_body(*chunks)
+    Object.new.tap do |body|
+      body.instance_variable_set(:@chunks, chunks)
+      body.instance_variable_set(:@closed, false)
+      body.instance_variable_set(:@each_calls, 0)
+      yield body
       body.define_singleton_method(:close) do
         @closed = true
       end
