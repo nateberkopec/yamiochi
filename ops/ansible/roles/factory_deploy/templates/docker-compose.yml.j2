@@ -25,6 +25,9 @@ services:
         cd {{ factory_repo_checkout_path }}
         gh auth setup-git >/dev/null 2>&1 || true
         while true; do
+          git fetch --prune origin
+          git checkout --force {{ factory_repo_ref }}
+          git reset --hard origin/{{ factory_repo_ref }}
           ruby factory/scripts/autopilot.rb --once || true
           sleep 30
         done

@@ -58,6 +58,9 @@ services:
         cd /var/lib/yamiochi-factory/repos/yamiochi
         gh auth setup-git >/dev/null 2>&1 || true
         while true; do
+          git fetch --prune origin
+          git checkout --force main
+          git reset --hard origin/main
           ruby factory/scripts/autopilot.rb --once || true
           sleep 30
         done
