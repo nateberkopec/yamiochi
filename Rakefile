@@ -77,9 +77,11 @@ task :build do
   sh "gem build yamiochi.gemspec"
 end
 
-desc "Placeholder benchmark frontend"
+desc "Run the benchmark frontend"
 task :bench do
-  puts "Benchmark harness not implemented yet. See SPEC.md §12 and FACTORY.md §9."
+  require_relative "lib/yamiochi/benchmark_runner"
+
+  Yamiochi::BenchmarkRunner.new.run
 end
 
 desc "Run the fast local verification set"

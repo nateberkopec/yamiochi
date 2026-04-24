@@ -187,6 +187,68 @@ class YamiochiServerTest < Minitest::Test
     assert_equal "direct app", response_body(response_text)
   end
 
+  def test_run_handles_multiple_sequential_clients_when_max_requests_is_set
+    request_paths = []
+    request_paths_mutex = Mutex.new
+    app = lambda { |env|
+      request_paths_mutex.synchronize do
+        request_paths << env.fetch("PATH_INFO")
+      end
+      [200, {"Content-Length" => "2"}, ["ok"]]
+    }
+    server = Yamiochi::Server.new(
+      app: app,
+      host: "127.0.0.1",
+      port: 0,
+      out: StringIO.new,
+      err: StringIO.new,
+      max_requests: 2
+    )
+    thread = Thread.new do
+      Thread.current.report_on_exception = false
+      server.run
+    end
+    bound_port = wait_for_bound_port(server, thread)
+
+    first_response = request_response("127.0.0.1", bound_port, basic_request("/first"))
+    second_response = request_response("127.0.0.1", bound_port, basic_request("/second"))
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(first_response)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(second_response)
+    assert_equal ["/first", "/second"], request_paths
+  end
+
+  def test_run_still_handles_one_client_by_default
+    calls = 0
+    calls_mutex = Mutex.new
+    app = lambda do |_env|
+      calls_mutex.synchronize { calls += 1 }
+      [200, {"Content-Length" => "2"}, ["ok"]]
+    end
+    server = Yamiochi::Server.new(
+      app: app,
+      host: "127.0.0.1",
+      port: 0,
+      out: StringIO.new,
+      err: StringIO.new
+    )
+    thread = Thread.new do
+      Thread.current.report_on_exception = false
+      server.run
+    end
+    bound_port = wait_for_bound_port(server, thread)
+
+    response_text = request_response("127.0.0.1", bound_port, basic_request("/once"))
+
+    assert_server_thread_exits(thread, server)
+    assert_equal "HTTP/1.1 200 OK", response_status_line(response_text)
+    assert_equal 1, calls
+    assert_raises(Errno::ECONNREFUSED) do
+      request_response("127.0.0.1", bound_port, basic_request("/twice"))
+    end
+  end
+
   def test_run_sets_rack_hijack_capability_flag_to_false
     app = lambda { |env|
       [200, {}, [env.fetch("rack.hijack?").to_s]]
