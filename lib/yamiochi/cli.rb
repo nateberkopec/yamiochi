@@ -92,19 +92,22 @@ module Yamiochi
     end
 
     def extract_rackup_path
-      if argv.empty?
-        err.puts "missing Rackup file path"
-        err.puts USAGE
-        return
-      end
-
-      if argv.length > 1
-        err.puts "unexpected arguments: #{argv[1..].join(" ")}"
-        err.puts USAGE
-        return
-      end
+      return report_missing_rackup_path if argv.empty?
+      return report_unexpected_arguments if argv.length > 1
 
       argv.first
+    end
+
+    def report_missing_rackup_path
+      err.puts "missing Rackup file path"
+      err.puts USAGE
+      nil
+    end
+
+    def report_unexpected_arguments
+      err.puts "unexpected arguments: #{argv[1..].join(" ")}"
+      err.puts USAGE
+      nil
     end
   end
 end
